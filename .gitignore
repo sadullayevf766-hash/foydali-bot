@@ -1,0 +1,10 @@
+# Maxfiy va vaqtinchalik fayllar (hech qachon yuklamang)
+.env
+venv/
+bot.db
+__pycache__/
+*.pyc
+logo.png
+# Loglar token'ni URL'larda o'z ichiga oladi — hech qachon yuklamang!
+*.log
+bot.log*
