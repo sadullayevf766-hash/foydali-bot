@@ -1,5 +1,7 @@
-"""Foydali amallar: Rasm->PDF, PDF birlashtirish, QR, valyuta."""
+"""Foydali amallar: Rasm->PDF, PDF birlashtirish, QR, valyuta, buxgalter, OCR."""
 import io
+import os
+import zipfile
 from datetime import date, timedelta
 import httpx
 import qrcode
@@ -98,3 +100,123 @@ def _fmt_som(rate_str: str) -> str:
     if v >= 100:
         return f"{v:,.0f}".replace(",", " ")
     return f"{v:.2f}"
+
+
+async def get_rate_map() -> dict:
+    """Valyuta kodlari -> kurs (float) lug'atini qaytaradi (konvertor uchun)."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        data = await _fetch_latest_rates(client)
+    m = {}
+    for it in data:
+        try:
+            m[it["Ccy"]] = float(it["Rate"])
+        except (ValueError, TypeError, KeyError):
+            continue
+    return m, data[0].get("Date", "")
+
+
+# ---------- Buxgalter: Son -> so'zda ----------
+
+_UNITS = ["", "bir", "ikki", "uch", "to'rt", "besh", "olti", "yetti", "sakkiz", "to'qqiz"]
+_TENS = ["", "o'n", "yigirma", "o'ttiz", "qirq", "ellik", "oltmish", "yetmish", "sakson", "to'qson"]
+_SCALES = ["", "ming", "million", "milliard", "trillion", "kvadrillion"]
+
+
+def _three_digit_words(x: int) -> str:
+    """0..999 ni so'zga aylantiradi."""
+    parts = []
+    h, t, u = x // 100, (x % 100) // 10, x % 10
+    if h:
+        parts.append((_UNITS[h] + " " if h > 1 else "") + "yuz")
+    if t:
+        parts.append(_TENS[t])
+    if u:
+        parts.append(_UNITS[u])
+    return " ".join(parts)
+
+
+def number_to_uzbek_words(n: int) -> str:
+    """Butun sonni o'zbekcha so'zlarga aylantiradi. Masalan 1250000 ->
+    'bir million ikki yuz ellik ming'."""
+    if n == 0:
+        return "nol"
+    if n < 0:
+        return "minus " + number_to_uzbek_words(-n)
+    groups = []
+    while n > 0:
+        groups.append(n % 1000)
+        n //= 1000
+    parts = []
+    for i in range(len(groups) - 1, -1, -1):
+        g = groups[i]
+        if g == 0:
+            continue
+        if i == 1 and g == 1:
+            parts.append("ming")  # "bir ming" emas, "ming"
+        else:
+            words = _three_digit_words(g)
+            if i > 0:
+                words += " " + _SCALES[i]
+            parts.append(words)
+    return " ".join(parts)
+
+
+# ---------- Fayl/rasm vositalari ----------
+
+def split_pdf(pdf_bytes: bytes):
+    """PDF ni alohida sahifalarga bo'lib, ZIP qilib qaytaradi. (zip_bytes, sahifalar_soni)."""
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for i, page in enumerate(reader.pages, 1):
+            writer = PdfWriter()
+            writer.add_page(page)
+            pb = io.BytesIO()
+            writer.write(pb)
+            z.writestr(f"sahifa_{i}.pdf", pb.getvalue())
+    return buf.getvalue(), len(reader.pages)
+
+
+def compress_image(image_bytes: bytes) -> bytes:
+    """Rasm hajmini kamaytiradi (JPEG sifatini pasaytirib)."""
+    img = Image.open(io.BytesIO(image_bytes))
+    if img.mode in ("RGBA", "P", "LA"):
+        img = img.convert("RGB")
+    out = io.BytesIO()
+    img.save(out, format="JPEG", quality=45, optimize=True)
+    return out.getvalue()
+
+
+def resize_image(image_bytes: bytes, max_side: int = 1024) -> bytes:
+    """Rasmning eng uzun tomonini max_side ga keltiradi (proporsiya saqlanadi)."""
+    img = Image.open(io.BytesIO(image_bytes))
+    if img.mode in ("RGBA", "P", "LA"):
+        img = img.convert("RGB")
+    w, h = img.size
+    scale = max_side / max(w, h)
+    if scale < 1:
+        img = img.resize((max(1, int(w * scale)), max(1, int(h * scale))))
+    out = io.BytesIO()
+    img.save(out, format="JPEG", quality=85, optimize=True)
+    return out.getvalue()
+
+
+# ---------- OCR (rasmdan matn) — OCR.space API ----------
+
+async def ocr_image_bytes(image_bytes: bytes) -> str:
+    """Rasmdan matnni chiqaradi. OCR_SPACE_API_KEY env (bo'lmasa demo kalit)."""
+    api_key = os.environ.get("OCR_SPACE_API_KEY", "helloworld")
+    async with httpx.AsyncClient(timeout=90) as client:
+        resp = await client.post(
+            "https://api.ocr.space/parse/image",
+            data={"apikey": api_key, "OCREngine": "2", "scale": "true"},
+            files={"file": ("image.jpg", image_bytes, "image/jpeg")},
+        )
+    j = resp.json()
+    if j.get("IsErroredOnProcessing"):
+        msg = j.get("ErrorMessage")
+        if isinstance(msg, list):
+            msg = " ".join(msg)
+        raise RuntimeError(str(msg))
+    results = j.get("ParsedResults") or []
+    return results[0].get("ParsedText", "").strip() if results else ""

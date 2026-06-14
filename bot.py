@@ -1,5 +1,6 @@
 """Foydali Bot — asosiy fayl. Ishga tushirish: python bot.py"""
 import os
+import re
 import sys
 import socket
 import threading
@@ -78,12 +79,27 @@ def _start_health_server():
     except Exception:
         log.exception("Health server ishga tushmadi")
 
-# Tugmalar matni
-B_PDF = "📄 Rasm → PDF"
-B_MERGE = "🔗 PDF birlashtirish"
+# Tugmalar matni — asosiy menyu
+B_FILES = "📂 Fayl & Rasm"
+B_ACCT = "🧮 Buxgalter"
 B_QR = "⚡ QR-kod"
 B_RATES = "💱 Valyuta kursi"
 B_PREMIUM = "💎 Premium"
+B_BACK = "⬅️ Orqaga"
+
+# Fayl/rasm bo'limi
+B_PDF = "📄 Rasm → PDF"
+B_MERGE = "🔗 PDF birlashtirish"
+B_SPLIT = "✂️ PDF bo'lish"
+B_COMPRESS = "🗜 Rasm siqish"
+B_RESIZE = "📐 Rasm kichraytirish"
+B_OCR = "🔤 Rasmdan matn"
+
+# Buxgalter bo'limi
+B_NUM2WORD = "💵 Son → so'zda"
+B_VAT = "🧾 QQS hisoblash"
+B_CONVERT = "🔄 Valyuta konvertor"
+
 B_DONE = "✅ Tayyor"
 B_CANCEL = "❌ Bekor qilish"
 
@@ -91,7 +107,15 @@ B_CANCEL = "❌ Bekor qilish"
 MAX_FILE_SIZE = 20 * 1024 * 1024
 
 MAIN_KB = ReplyKeyboardMarkup(
-    [[B_PDF, B_MERGE], [B_QR, B_RATES], [B_PREMIUM]],
+    [[B_FILES], [B_ACCT], [B_QR, B_RATES], [B_PREMIUM]],
+    resize_keyboard=True,
+)
+FILES_KB = ReplyKeyboardMarkup(
+    [[B_PDF, B_MERGE], [B_SPLIT, B_COMPRESS], [B_RESIZE, B_OCR], [B_BACK]],
+    resize_keyboard=True,
+)
+ACCT_KB = ReplyKeyboardMarkup(
+    [[B_NUM2WORD], [B_VAT, B_CONVERT], [B_BACK]],
     resize_keyboard=True,
 )
 DONE_KB = ReplyKeyboardMarkup(
@@ -113,11 +137,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reset(context)
     text = (
         f"Assalomu alaykum, {u.first_name}! 👋\n\n"
-        "Men *Foydali Bot*man. Quyidagilarni qila olaman:\n\n"
-        "📄 *Rasm → PDF* — rasmlarni bitta PDF qilaman\n"
-        "🔗 *PDF birlashtirish* — bir nechta PDF'ni bitta qilaman\n"
-        "⚡ *QR-kod* — istalgan matn/havoladan QR\n"
-        "💱 *Valyuta kursi* — Markaziy bank kursi\n\n"
+        "Men *Foydali Bot*man — ishingizni yengillashtiraman:\n\n"
+        "📂 *Fayl & Rasm*\n"
+        "   • Rasm → PDF, PDF birlashtirish/bo'lish\n"
+        "   • Rasm siqish/kichraytirish\n"
+        "   • 🔤 Rasmdan matn (OCR)\n\n"
+        "🧮 *Buxgalter*\n"
+        "   • 💵 Son → so'zda (hujjatlar uchun)\n"
+        "   • 🧾 QQS (12%) hisoblash\n"
+        "   • 🔄 Valyuta konvertor\n\n"
+        "⚡ *QR-kod*  •  💱 *Valyuta kursi*\n\n"
         "Pastdagi tugmalardan birini tanlang 👇"
     )
     await update.message.reply_text(text, parse_mode="Markdown", reply_markup=MAIN_KB)
@@ -164,42 +193,95 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    user_id = update.effective_user.id
 
-    if text == B_CANCEL:
+    # --- Navigatsiya ---
+    if text in (B_CANCEL, B_BACK):
         reset(context)
-        await update.message.reply_text("Bekor qilindi.", reply_markup=MAIN_KB)
+        await update.message.reply_text("Asosiy menyu 👇", reply_markup=MAIN_KB)
         return
 
-    if text == B_PDF:
+    if text == B_FILES:
         reset(context)
-        context.user_data["mode"] = "pdf"
+        await update.message.reply_text(
+            "📂 *Fayl & Rasm* — kerakli amalni tanlang:", parse_mode="Markdown",
+            reply_markup=FILES_KB,
+        )
+        return
+
+    if text == B_ACCT:
+        reset(context)
+        await update.message.reply_text(
+            "🧮 *Buxgalter* — kerakli amalni tanlang:", parse_mode="Markdown",
+            reply_markup=ACCT_KB,
+        )
+        return
+
+    # --- Fayl/rasm amallari (rejimni o'rnatadi) ---
+    if text == B_PDF:
+        reset(context); context.user_data["mode"] = "pdf"
         await update.message.reply_text(
             "📄 Rasmlarni yuboring (bittadan yoki bir nechta). "
-            "Tugagach *✅ Tayyor* tugmasini bosing.",
-            parse_mode="Markdown",
-            reply_markup=DONE_KB,
-        )
+            "Tugagach *✅ Tayyor* bosing.", parse_mode="Markdown", reply_markup=DONE_KB)
         return
-
     if text == B_MERGE:
-        reset(context)
-        context.user_data["mode"] = "merge"
+        reset(context); context.user_data["mode"] = "merge"
         await update.message.reply_text(
             "🔗 PDF fayllarni yuboring (fayl sifatida). "
-            "Tugagach *✅ Tayyor* tugmasini bosing.",
-            parse_mode="Markdown",
-            reply_markup=DONE_KB,
-        )
+            "Tugagach *✅ Tayyor* bosing.", parse_mode="Markdown", reply_markup=DONE_KB)
+        return
+    if text == B_SPLIT:
+        reset(context); context.user_data["mode"] = "split"
+        await update.message.reply_text(
+            "✂️ Bo'linadigan PDF faylni yuboring (fayl sifatida). "
+            "Har bir sahifa alohida PDF bo'lib, ZIP ichida qaytariladi.",
+            reply_markup=DONE_KB)
+        return
+    if text == B_COMPRESS:
+        reset(context); context.user_data["mode"] = "compress"
+        await update.message.reply_text(
+            "🗜 Siqiladigan rasmni yuboring — hajmini kichraytirib beraman.",
+            reply_markup=DONE_KB)
+        return
+    if text == B_RESIZE:
+        reset(context); context.user_data["mode"] = "resize"
+        await update.message.reply_text(
+            "📐 Rasmni yuboring — eng uzun tomonini 1024px ga kichraytiraman.",
+            reply_markup=DONE_KB)
+        return
+    if text == B_OCR:
+        reset(context); context.user_data["mode"] = "ocr"
+        await update.message.reply_text(
+            "🔤 Matnli rasm/skanni yuboring — ichidagi matnni chiqarib beraman.",
+            reply_markup=DONE_KB)
+        return
+
+    # --- Buxgalter amallari ---
+    if text == B_NUM2WORD:
+        reset(context); context.user_data["mode"] = "num2word"
+        await update.message.reply_text(
+            "💵 Sonni yuboring (masalan `1250000`) — so'zda yozib beraman.",
+            parse_mode="Markdown", reply_markup=ACCT_KB)
+        return
+    if text == B_VAT:
+        reset(context); context.user_data["mode"] = "vat"
+        await update.message.reply_text(
+            "🧾 Summani yuboring (masalan `1000000`) — QQS (12%) hisoblab beraman.",
+            parse_mode="Markdown", reply_markup=ACCT_KB)
+        return
+    if text == B_CONVERT:
+        reset(context); context.user_data["mode"] = "convert"
+        await update.message.reply_text(
+            "🔄 Summani yuboring:\n"
+            "• `100 USD` — dollarni so'mga\n"
+            "• `1000000` — so'mni valyutalarga",
+            parse_mode="Markdown", reply_markup=ACCT_KB)
         return
 
     if text == B_QR:
-        reset(context)
-        context.user_data["mode"] = "qr"
+        reset(context); context.user_data["mode"] = "qr"
         await update.message.reply_text(
             "⚡ QR-kodga aylantirmoqchi bo'lgan matn yoki havolani yuboring:",
-            reply_markup=MAIN_KB,
-        )
+            reply_markup=DONE_KB)
         return
 
     if text == B_RATES:
@@ -216,79 +298,226 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == B_DONE:
-        await finish(update, context)
-        return
-
-    # QR rejimida oddiy matn kelsa
-    if context.user_data.get("mode") == "qr":
-        png = utils.make_qr(text)
-        await update.message.reply_photo(
-            photo=InputFile(png, filename="qr.png"),
-            caption="✅ Tayyor! QR-kodingiz.",
-            reply_markup=MAIN_KB,
-        )
+        await update.message.reply_text(
+            "Bu amal uchun rasm/fayl yoki son yuboring 🙂", reply_markup=MAIN_KB)
         reset(context)
         return
 
-    # Hech qaysi rejimda emas
+    # --- Rejimga qarab matnni qayta ishlash ---
+    mode = context.user_data.get("mode")
+    if mode == "qr":
+        png = utils.make_qr(text)
+        await update.message.reply_photo(
+            photo=InputFile(png, filename="qr.png"),
+            caption="✅ Tayyor! QR-kodingiz.", reply_markup=MAIN_KB)
+        reset(context)
+        return
+    if mode == "num2word":
+        await _handle_num2word(update, text)
+        return
+    if mode == "vat":
+        await _handle_vat(update, text)
+        return
+    if mode == "convert":
+        await _handle_convert(update, text)
+        return
+
     await update.message.reply_text(
-        "Tugmalardan birini tanlang 👇", reply_markup=MAIN_KB
-    )
+        "Tugmalardan birini tanlang 👇", reply_markup=MAIN_KB)
+
+
+# ---------- Buxgalter hisoblash yordamchilari ----------
+
+def _parse_number(text: str):
+    """Matndan butun sonni ajratadi (bo'sh joy, vergul, nuqtani tashlab)."""
+    digits = re.sub(r"[^\d]", "", text)
+    return int(digits) if digits else None
+
+
+async def _handle_num2word(update: Update, text: str):
+    n = _parse_number(text)
+    if n is None:
+        await update.message.reply_text("❌ Son topilmadi. Masalan: 1250000", reply_markup=ACCT_KB)
+        return
+    words = utils.number_to_uzbek_words(n)
+    await update.message.reply_text(
+        f"🔢 *{n:,}*".replace(",", " ") + f"\n\n💵 *{words} so'm*",
+        parse_mode="Markdown", reply_markup=ACCT_KB)
+
+
+async def _handle_vat(update: Update, text: str):
+    n = _parse_number(text)
+    if n is None:
+        await update.message.reply_text("❌ Summa topilmadi. Masalan: 1000000", reply_markup=ACCT_KB)
+        return
+    def f(x):
+        return f"{x:,.0f}".replace(",", " ")
+    vat_add = n * 0.12
+    vat_extract = n * 12 / 112
+    await update.message.reply_text(
+        f"🧾 *QQS hisobi (12%)* — summa: {f(n)} so'm\n\n"
+        f"➕ *QQS qo'shilsa:*\n"
+        f"   QQS: {f(vat_add)} so'm\n"
+        f"   Jami: {f(n + vat_add)} so'm\n\n"
+        f"➖ *QQS ajratilsa* (summa ichida):\n"
+        f"   QQS: {f(vat_extract)} so'm\n"
+        f"   QQSsiz: {f(n - vat_extract)} so'm",
+        parse_mode="Markdown", reply_markup=ACCT_KB)
+
+
+async def _handle_convert(update: Update, text: str):
+    m = re.match(r"^\s*([\d\s.,]+)\s*([a-zA-Z]{3})?\s*$", text)
+    if not m:
+        await update.message.reply_text(
+            "❌ Tushunmadim. Masalan: `100 USD` yoki `1000000`",
+            parse_mode="Markdown", reply_markup=ACCT_KB)
+        return
+    amount = _parse_number(m.group(1))
+    code = (m.group(2) or "").upper()
+    if amount is None:
+        await update.message.reply_text("❌ Summa topilmadi.", reply_markup=ACCT_KB)
+        return
+    try:
+        rates, dt = await utils.get_rate_map()
+    except Exception:
+        await update.message.reply_text("❌ Kurs olishda xatolik.", reply_markup=ACCT_KB)
+        return
+
+    def f(x):
+        return f"{x:,.2f}".replace(",", " ")
+
+    if code:
+        if code not in rates:
+            await update.message.reply_text(
+                f"❌ '{code}' valyutasi topilmadi. USD, EUR, RUB, KZT va h.k.",
+                reply_markup=ACCT_KB)
+            return
+        som = amount * rates[code]
+        await update.message.reply_text(
+            f"🔄 *{amount:,} {code}* = *{f(som)} so'm*".replace(",", " ")
+            + f"\n\n(1 {code} = {f(rates[code])} so'm, {dt})",
+            parse_mode="Markdown", reply_markup=ACCT_KB)
+    else:
+        lines = [f"🔄 *{amount:,} so'm* =".replace(",", " "), ""]
+        for c in ["USD", "EUR", "RUB", "KZT"]:
+            if c in rates and rates[c]:
+                lines.append(f"   *{f(amount / rates[c])}* {c}")
+        lines.append(f"\n_(Markaziy bank kursi, {dt})_")
+        await update.message.reply_text(
+            "\n".join(lines), parse_mode="Markdown", reply_markup=ACCT_KB)
 
 
 async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.user_data.get("mode") != "pdf":
+    mode = context.user_data.get("mode")
+    if mode not in ("pdf", "compress", "resize", "ocr"):
         await update.message.reply_text(
-            "Rasmni PDF qilish uchun avval 📄 *Rasm → PDF* tugmasini bosing.",
-            parse_mode="Markdown",
-            reply_markup=MAIN_KB,
-        )
+            "Rasm bilan ishlash uchun avval 📂 *Fayl & Rasm* dan amalni tanlang.",
+            parse_mode="Markdown", reply_markup=MAIN_KB)
         return
     photo = update.message.photo[-1]  # eng yuqori sifat
     if photo.file_size and photo.file_size > MAX_FILE_SIZE:
         await update.message.reply_text(
-            "⚠️ Rasm juda katta (20 MB dan ortiq). Kichikroq rasm yuboring."
-        )
+            "⚠️ Rasm juda katta (20 MB dan ortiq). Kichikroq rasm yuboring.")
         return
     file = await context.bot.get_file(photo.file_id)
     data = bytes(await file.download_as_bytearray())
-    context.user_data.setdefault("images", []).append(data)
-    n = len(context.user_data["images"])
-    await update.message.reply_text(
-        f"✅ {n}-rasm qabul qilindi. Yana yuboring yoki *✅ Tayyor* bosing.",
-        parse_mode="Markdown",
-        reply_markup=DONE_KB,
-    )
+
+    if mode == "pdf":
+        context.user_data.setdefault("images", []).append(data)
+        n = len(context.user_data["images"])
+        await update.message.reply_text(
+            f"✅ {n}-rasm qabul qilindi. Yana yuboring yoki *✅ Tayyor* bosing.",
+            parse_mode="Markdown", reply_markup=DONE_KB)
+        return
+
+    # compress / resize / ocr — darhol qayta ishlash (kvota sarflanadi)
+    await _process_single_image(update, context, mode, data)
+
+
+async def _process_single_image(update, context, mode, data):
+    user_id = update.effective_user.id
+    if not db.consume_quota(user_id):
+        await _limit_reached(update)
+        return
+    try:
+        if mode == "compress":
+            out = utils.compress_image(data)
+            await update.message.reply_document(
+                document=InputFile(out, filename="siqilgan.jpg"),
+                caption=f"🗜 Siqildi: {len(data)//1024} KB → {len(out)//1024} KB\n\n"
+                        + _quota_caption(user_id),
+                reply_markup=FILES_KB)
+        elif mode == "resize":
+            out = utils.resize_image(data)
+            await update.message.reply_document(
+                document=InputFile(out, filename="kichraytirilgan.jpg"),
+                caption="📐 Tayyor! (1024px)\n\n" + _quota_caption(user_id),
+                reply_markup=FILES_KB)
+        elif mode == "ocr":
+            await update.message.chat.send_action("typing")
+            txt = await utils.ocr_image_bytes(data)
+            if not txt:
+                await update.message.reply_text(
+                    "🤷 Matn topilmadi. Aniqroq/yorug'roq rasm yuboring.",
+                    reply_markup=FILES_KB)
+            else:
+                # Telegram xabar chegarasi ~4096; uzun bo'lsa bo'lib yuboramiz
+                head = "🔤 *Topilgan matn:*\n\n"
+                await update.message.reply_text(
+                    head + txt[:3900], parse_mode="Markdown", reply_markup=FILES_KB)
+            return  # OCR uchun caption alohida
+    except Exception:
+        log.exception(f"{mode} xatolik")
+        await update.message.reply_text(
+            "❌ Amalda xatolik yuz berdi. Boshqa fayl bilan urinib ko'ring.",
+            reply_markup=FILES_KB)
+    finally:
+        reset(context)
 
 
 async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     doc = update.message.document
-    if context.user_data.get("mode") != "merge":
+    mode = context.user_data.get("mode")
+    if mode not in ("merge", "split"):
         await update.message.reply_text(
-            "PDF birlashtirish uchun avval 🔗 *PDF birlashtirish* tugmasini bosing.",
-            parse_mode="Markdown",
-            reply_markup=MAIN_KB,
-        )
+            "PDF bilan ishlash uchun avval 📂 *Fayl & Rasm* dan amalni tanlang.",
+            parse_mode="Markdown", reply_markup=MAIN_KB)
         return
-    if not (doc.mime_type == "application/pdf" or doc.file_name.lower().endswith(".pdf")):
+    if not (doc.mime_type == "application/pdf" or (doc.file_name or "").lower().endswith(".pdf")):
         await update.message.reply_text("❌ Bu PDF fayl emas. PDF yuboring.")
         return
     if doc.file_size and doc.file_size > MAX_FILE_SIZE:
         await update.message.reply_text(
-            "⚠️ Bu fayl juda katta (20 MB dan ortiq). "
-            "Telegram botlari katta fayllarni qabul qila olmaydi. "
-            "Iltimos, kichikroq PDF yuboring."
-        )
+            "⚠️ Bu fayl juda katta (20 MB dan ortiq). Kichikroq PDF yuboring.")
         return
     file = await context.bot.get_file(doc.file_id)
     data = bytes(await file.download_as_bytearray())
-    context.user_data.setdefault("pdfs", []).append(data)
-    n = len(context.user_data["pdfs"])
-    await update.message.reply_text(
-        f"✅ {n}-PDF qabul qilindi. Yana yuboring yoki *✅ Tayyor* bosing.",
-        parse_mode="Markdown",
-        reply_markup=DONE_KB,
-    )
+
+    if mode == "merge":
+        context.user_data.setdefault("pdfs", []).append(data)
+        n = len(context.user_data["pdfs"])
+        await update.message.reply_text(
+            f"✅ {n}-PDF qabul qilindi. Yana yuboring yoki *✅ Tayyor* bosing.",
+            parse_mode="Markdown", reply_markup=DONE_KB)
+        return
+
+    # split — darhol bo'lish (kvota sarflanadi)
+    user_id = update.effective_user.id
+    if not db.consume_quota(user_id):
+        await _limit_reached(update)
+        return
+    try:
+        zip_bytes, pages = utils.split_pdf(data)
+        await update.message.reply_document(
+            document=InputFile(zip_bytes, filename="sahifalar.zip"),
+            caption=f"✂️ {pages} ta sahifaga bo'lindi.\n\n" + _quota_caption(user_id),
+            reply_markup=FILES_KB)
+    except Exception:
+        log.exception("split xatolik")
+        await update.message.reply_text(
+            "❌ PDF bo'lishda xatolik.", reply_markup=FILES_KB)
+    finally:
+        reset(context)
 
 
 async def finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
