@@ -5,7 +5,7 @@ import zipfile
 from datetime import date, timedelta
 import httpx
 import qrcode
-from PIL import Image
+from PIL import Image, ImageOps, ImageFilter
 from pypdf import PdfReader, PdfWriter
 from config import CBU_URL
 
@@ -204,19 +204,26 @@ def resize_image(image_bytes: bytes, max_side: int = 1024) -> bytes:
 # ---------- OCR (rasmdan matn) — OCR.space API ----------
 
 def _prep_for_ocr(image_bytes: bytes) -> bytes:
-    """OCR uchun rasmni tayyorlaydi: kattasini kichraytiradi va 1MB dan
-    kichik JPEG qiladi (bepul OCR API 1MB chegarasi sababli — bu sifatni
-    sezilarli oshiradi)."""
+    """OCR aniqligini oshirish uchun rasmni tayyorlaydi:
+    - EXIF bo'yicha to'g'rilaydi (qiyshiq surat)
+    - qora-oq (grayscale) + kontrastni cho'zadi + o'tkirlaydi
+    - mayda rasmni kattalashtiradi, ulkanini kichraytiradi
+    - 1MB dan kichik JPEG qiladi (bepul OCR API chegarasi)."""
     img = Image.open(io.BytesIO(image_bytes))
-    if img.mode in ("RGBA", "P", "LA"):
-        img = img.convert("RGB")
+    img = ImageOps.exif_transpose(img)        # telefon suratidagi burilishni to'g'rilash
+    img = img.convert("L")                      # qora-oq — OCR uchun yaxshiroq
     w, h = img.size
-    max_side = 2200
-    if max(w, h) > max_side:
-        s = max_side / max(w, h)
-        img = img.resize((max(1, int(w * s)), max(1, int(h * s))))
+    longest = max(w, h)
+    if longest < 1200:                          # mayda matnni kattalashtirish
+        s = 1600 / longest
+        img = img.resize((int(w * s), int(h * s)))
+    elif longest > 2600:                        # juda ulkanini kichraytirish
+        s = 2600 / longest
+        img = img.resize((int(w * s), int(h * s)))
+    img = ImageOps.autocontrast(img, cutoff=1)  # kontrastni cho'zish
+    img = img.filter(ImageFilter.SHARPEN)       # o'tkirlash
     out = io.BytesIO()
-    for q in (88, 75, 60, 45, 30):
+    for q in (92, 82, 70, 55, 40):
         out.seek(0); out.truncate(0)
         img.save(out, format="JPEG", quality=q)
         if out.tell() < 1_000_000:
