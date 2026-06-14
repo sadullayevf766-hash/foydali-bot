@@ -1,17 +1,19 @@
-# Render.com Blueprint — Foydali Bot
-# Telegram polling bot = "Background Worker" (doimiy ishlaydi, HTTP port kerak emas).
-# Eslatma: Render'da Background Worker pullik (Starter ~$7/oy). Bepul reja workerni qo'llamaydi.
+# Render.com Blueprint — Foydali Bot (BEPUL Web Service)
+# Bot polling rejimida ishlaydi; kichik health-server $PORT ni egallaydi
+# (Render web service port talab qiladi va xizmat "uxlamasligi" uchun ping nishoni).
+# Eslatma: bepul web service 15 daqiqa harakatsizlikdan keyin uxlaydi —
+# UptimeRobot kabi tekin "ping" xizmati bilan uyg'oq saqlanadi.
 services:
-  - type: worker
+  - type: web
     name: foydali-bot
     runtime: python
-    plan: starter
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.7"
-      # Maxfiy qiymatlar — Render boshqaruv panelida qo'lda kiritiladi (sync: false):
+      # Maxfiy qiymatlar — Render panelida qo'lda kiritiladi:
       - key: BOT_TOKEN
         sync: false
       - key: ADMIN_ID

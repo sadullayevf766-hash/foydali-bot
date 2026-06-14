@@ -2,7 +2,9 @@
 import os
 import sys
 import socket
+import threading
 import logging
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from logging.handlers import RotatingFileHandler
 from telegram import (
     Update,
@@ -49,6 +51,32 @@ def _ensure_single_instance():
     except OSError:
         log.warning("Bot allaqachon ishlayapti — bu nusxa to'xtatildi.")
         sys.exit(0)
+
+
+class _HealthHandler(BaseHTTPRequestHandler):
+    """Render kabi bulutli xizmatlar uchun oddiy 'health' javobi (200 OK).
+    Bu, shuningdek, xizmat uxlab qolmasligi uchun 'ping' nishoni bo'lib xizmat qiladi."""
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.end_headers()
+        self.wfile.write("Foydali Bot ishlayapti ✅".encode("utf-8"))
+
+    def log_message(self, *args):
+        pass  # log'larni jim qoldiramiz
+
+
+def _start_health_server():
+    """PORT env mavjud bo'lsa (Render/bulut), HTTP server ishga tushiramiz."""
+    port = os.environ.get("PORT")
+    if not port:
+        return
+    try:
+        server = HTTPServer(("0.0.0.0", int(port)), _HealthHandler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        log.info(f"Health server {port}-portda ishga tushdi (bulut rejimi)")
+    except Exception:
+        log.exception("Health server ishga tushmadi")
 
 # Tugmalar matni
 B_PDF = "📄 Rasm → PDF"
@@ -378,6 +406,7 @@ def main():
             "(.env.example dan nusxa oling)."
         )
     _ensure_single_instance()
+    _start_health_server()  # Render/bulut uchun (PORT env bo'lsa)
     db.init_db()
     app = Application.builder().token(config.BOT_TOKEN).build()
 
