@@ -203,20 +203,55 @@ def resize_image(image_bytes: bytes, max_side: int = 1024) -> bytes:
 
 # ---------- OCR (rasmdan matn) — OCR.space API ----------
 
-async def ocr_image_bytes(image_bytes: bytes) -> str:
-    """Rasmdan matnni chiqaradi. OCR_SPACE_API_KEY env (bo'lmasa demo kalit)."""
-    api_key = os.environ.get("OCR_SPACE_API_KEY", "helloworld")
-    async with httpx.AsyncClient(timeout=90) as client:
-        resp = await client.post(
-            "https://api.ocr.space/parse/image",
-            data={"apikey": api_key, "OCREngine": "2", "scale": "true"},
-            files={"file": ("image.jpg", image_bytes, "image/jpeg")},
-        )
+def _prep_for_ocr(image_bytes: bytes) -> bytes:
+    """OCR uchun rasmni tayyorlaydi: kattasini kichraytiradi va 1MB dan
+    kichik JPEG qiladi (bepul OCR API 1MB chegarasi sababli — bu sifatni
+    sezilarli oshiradi)."""
+    img = Image.open(io.BytesIO(image_bytes))
+    if img.mode in ("RGBA", "P", "LA"):
+        img = img.convert("RGB")
+    w, h = img.size
+    max_side = 2200
+    if max(w, h) > max_side:
+        s = max_side / max(w, h)
+        img = img.resize((max(1, int(w * s)), max(1, int(h * s))))
+    out = io.BytesIO()
+    for q in (88, 75, 60, 45, 30):
+        out.seek(0); out.truncate(0)
+        img.save(out, format="JPEG", quality=q)
+        if out.tell() < 1_000_000:
+            break
+    return out.getvalue()
+
+
+async def _ocr_call(client, image_bytes, engine, language=None):
+    data = {
+        "apikey": os.environ.get("OCR_SPACE_API_KEY", "helloworld"),
+        "OCREngine": engine,
+        "scale": "true",
+        "detectOrientation": "true",
+        "isOverlayRequired": "false",
+    }
+    if language:
+        data["language"] = language
+    resp = await client.post(
+        "https://api.ocr.space/parse/image",
+        data=data,
+        files={"file": ("image.jpg", image_bytes, "image/jpeg")},
+    )
     j = resp.json()
     if j.get("IsErroredOnProcessing"):
-        msg = j.get("ErrorMessage")
-        if isinstance(msg, list):
-            msg = " ".join(msg)
-        raise RuntimeError(str(msg))
+        return ""
     results = j.get("ParsedResults") or []
     return results[0].get("ParsedText", "").strip() if results else ""
+
+
+async def ocr_image_bytes(image_bytes: bytes) -> str:
+    """Rasmdan matn chiqaradi. Avval Engine 2 (lotin/auto), natija bo'sh bo'lsa
+    Engine 1 + rus (kirill matn) bilan qayta urinadi."""
+    prepped = _prep_for_ocr(image_bytes)
+    async with httpx.AsyncClient(timeout=90) as client:
+        txt = await _ocr_call(client, prepped, engine="2")
+        if not txt.strip():
+            txt = await _ocr_call(client, prepped, engine="1", language="rus")
+    return txt.strip()
