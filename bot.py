@@ -93,7 +93,6 @@ B_MERGE = "🔗 PDF birlashtirish"
 B_SPLIT = "✂️ PDF bo'lish"
 B_COMPRESS = "🗜 Rasm siqish"
 B_RESIZE = "📐 Rasm kichraytirish"
-B_OCR = "🔤 Rasmdan matn"
 
 # Buxgalter bo'limi
 B_NUM2WORD = "💵 Son → so'zda"
@@ -111,7 +110,7 @@ MAIN_KB = ReplyKeyboardMarkup(
     resize_keyboard=True,
 )
 FILES_KB = ReplyKeyboardMarkup(
-    [[B_PDF, B_MERGE], [B_SPLIT, B_COMPRESS], [B_RESIZE, B_OCR], [B_BACK]],
+    [[B_PDF, B_MERGE], [B_SPLIT, B_COMPRESS], [B_RESIZE], [B_BACK]],
     resize_keyboard=True,
 )
 ACCT_KB = ReplyKeyboardMarkup(
@@ -140,8 +139,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Men *Foydali Bot*man — ishingizni yengillashtiraman:\n\n"
         "📂 *Fayl & Rasm*\n"
         "   • Rasm → PDF, PDF birlashtirish/bo'lish\n"
-        "   • Rasm siqish/kichraytirish\n"
-        "   • 🔤 Rasmdan matn (OCR)\n\n"
+        "   • Rasm siqish/kichraytirish\n\n"
         "🧮 *Buxgalter*\n"
         "   • 💵 Son → so'zda (hujjatlar uchun)\n"
         "   • 🧾 QQS (12%) hisoblash\n"
@@ -246,12 +244,6 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reset(context); context.user_data["mode"] = "resize"
         await update.message.reply_text(
             "📐 Rasmni yuboring — eng uzun tomonini 1024px ga kichraytiraman.",
-            reply_markup=DONE_KB)
-        return
-    if text == B_OCR:
-        reset(context); context.user_data["mode"] = "ocr"
-        await update.message.reply_text(
-            "🔤 Matnli rasm/skanni yuboring — ichidagi matnni chiqarib beraman.",
             reply_markup=DONE_KB)
         return
 
@@ -409,7 +401,7 @@ async def _handle_convert(update: Update, text: str):
 
 async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mode = context.user_data.get("mode")
-    if mode not in ("pdf", "compress", "resize", "ocr"):
+    if mode not in ("pdf", "compress", "resize"):
         await update.message.reply_text(
             "Rasm bilan ishlash uchun avval 📂 *Fayl & Rasm* dan amalni tanlang.",
             parse_mode="Markdown", reply_markup=MAIN_KB)
@@ -430,7 +422,7 @@ async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown", reply_markup=DONE_KB)
         return
 
-    # compress / resize / ocr — darhol qayta ishlash (kvota sarflanadi)
+    # compress / resize — darhol qayta ishlash (kvota sarflanadi)
     await _process_single_image(update, context, mode, data)
 
 
@@ -453,19 +445,6 @@ async def _process_single_image(update, context, mode, data):
                 document=InputFile(out, filename="kichraytirilgan.jpg"),
                 caption="📐 Tayyor! (1024px)\n\n" + _quota_caption(user_id),
                 reply_markup=FILES_KB)
-        elif mode == "ocr":
-            await update.message.chat.send_action("typing")
-            txt = await utils.ocr_image_bytes(data)
-            if not txt:
-                await update.message.reply_text(
-                    "🤷 Matn topilmadi. Aniqroq/yorug'roq rasm yuboring.",
-                    reply_markup=FILES_KB)
-            else:
-                # Telegram xabar chegarasi ~4096; uzun bo'lsa bo'lib yuboramiz
-                head = "🔤 *Topilgan matn:*\n\n"
-                await update.message.reply_text(
-                    head + txt[:3900], parse_mode="Markdown", reply_markup=FILES_KB)
-            return  # OCR uchun caption alohida
     except Exception:
         log.exception(f"{mode} xatolik")
         await update.message.reply_text(

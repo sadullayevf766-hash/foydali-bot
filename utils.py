@@ -1,11 +1,10 @@
-"""Foydali amallar: Rasm->PDF, PDF birlashtirish, QR, valyuta, buxgalter, OCR."""
+"""Foydali amallar: Rasm->PDF, PDF birlashtirish/bo'lish, rasm siqish/kichraytirish, QR, valyuta, buxgalter."""
 import io
-import os
 import zipfile
 from datetime import date, timedelta
 import httpx
 import qrcode
-from PIL import Image, ImageOps, ImageFilter
+from PIL import Image
 from pypdf import PdfReader, PdfWriter
 from config import CBU_URL
 
@@ -199,66 +198,3 @@ def resize_image(image_bytes: bytes, max_side: int = 1024) -> bytes:
     out = io.BytesIO()
     img.save(out, format="JPEG", quality=85, optimize=True)
     return out.getvalue()
-
-
-# ---------- OCR (rasmdan matn) — OCR.space API ----------
-
-def _prep_for_ocr(image_bytes: bytes) -> bytes:
-    """OCR aniqligini oshirish uchun rasmni tayyorlaydi:
-    - EXIF bo'yicha to'g'rilaydi (qiyshiq surat)
-    - qora-oq (grayscale) + kontrastni cho'zadi + o'tkirlaydi
-    - mayda rasmni kattalashtiradi, ulkanini kichraytiradi
-    - 1MB dan kichik JPEG qiladi (bepul OCR API chegarasi)."""
-    img = Image.open(io.BytesIO(image_bytes))
-    img = ImageOps.exif_transpose(img)        # telefon suratidagi burilishni to'g'rilash
-    img = img.convert("L")                      # qora-oq — OCR uchun yaxshiroq
-    w, h = img.size
-    longest = max(w, h)
-    if longest < 1200:                          # mayda matnni kattalashtirish
-        s = 1600 / longest
-        img = img.resize((int(w * s), int(h * s)))
-    elif longest > 2600:                        # juda ulkanini kichraytirish
-        s = 2600 / longest
-        img = img.resize((int(w * s), int(h * s)))
-    img = ImageOps.autocontrast(img, cutoff=1)  # kontrastni cho'zish
-    img = img.filter(ImageFilter.SHARPEN)       # o'tkirlash
-    out = io.BytesIO()
-    for q in (92, 82, 70, 55, 40):
-        out.seek(0); out.truncate(0)
-        img.save(out, format="JPEG", quality=q)
-        if out.tell() < 1_000_000:
-            break
-    return out.getvalue()
-
-
-async def _ocr_call(client, image_bytes, engine, language=None):
-    data = {
-        "apikey": os.environ.get("OCR_SPACE_API_KEY", "helloworld"),
-        "OCREngine": engine,
-        "scale": "true",
-        "detectOrientation": "true",
-        "isOverlayRequired": "false",
-    }
-    if language:
-        data["language"] = language
-    resp = await client.post(
-        "https://api.ocr.space/parse/image",
-        data=data,
-        files={"file": ("image.jpg", image_bytes, "image/jpeg")},
-    )
-    j = resp.json()
-    if j.get("IsErroredOnProcessing"):
-        return ""
-    results = j.get("ParsedResults") or []
-    return results[0].get("ParsedText", "").strip() if results else ""
-
-
-async def ocr_image_bytes(image_bytes: bytes) -> str:
-    """Rasmdan matn chiqaradi. Avval Engine 2 (lotin/auto), natija bo'sh bo'lsa
-    Engine 1 + rus (kirill matn) bilan qayta urinadi."""
-    prepped = _prep_for_ocr(image_bytes)
-    async with httpx.AsyncClient(timeout=90) as client:
-        txt = await _ocr_call(client, prepped, engine="2")
-        if not txt.strip():
-            txt = await _ocr_call(client, prepped, engine="1", language="rus")
-    return txt.strip()
