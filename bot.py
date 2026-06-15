@@ -241,9 +241,14 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "📝 *Matn → Word/PDF*\n\n"
             "Matningizni yuboring (insho, ma'ruza, referat...). "
-            "Uzun bo'lsa bir nechta xabarda yuborsangiz ham bo'ladi.\n\n"
-            "💡 Birinchi qatorni mavzu (sarlavha) qilib yozsangiz — markazda "
-            "qalin chiqadi.\n\n"
+            "Uzun bo'lsa bir nechta xabarda yuboravering.\n\n"
+            "✍️ *Tuzilma uchun belgilar:*\n"
+            "`# Sarlavha` — asosiy mavzu\n"
+            "`## Bo'lim` — bo'lim sarlavhasi\n"
+            "`### Kichik bo'lim`\n"
+            "`- punkt` — belgili ro'yxat\n"
+            "`1. punkt` — raqamli ro'yxat\n"
+            "oddiy matn — xatboshi\n\n"
             "Tugagach 📄 *Word* yoki 📑 *PDF* tugmasini bosing.",
             parse_mode="Markdown", reply_markup=TEXT2DOC_KB)
         return
