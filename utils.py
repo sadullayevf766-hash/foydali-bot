@@ -1,12 +1,14 @@
 """Foydali amallar: Rasm->PDF, PDF birlashtirish/bo'lish, rasm siqish/kichraytirish, QR, valyuta, buxgalter."""
 import io
+import os
+import html
 import zipfile
 from datetime import date, timedelta
 import httpx
 import qrcode
 from PIL import Image
 from pypdf import PdfReader, PdfWriter
-from config import CBU_URL
+from config import CBU_URL, BASE_DIR
 
 
 def images_to_pdf(image_bytes_list: list[bytes]) -> bytes:
@@ -198,3 +200,88 @@ def resize_image(image_bytes: bytes, max_side: int = 1024) -> bytes:
     out = io.BytesIO()
     img.save(out, format="JPEG", quality=85, optimize=True)
     return out.getvalue()
+
+
+# ---------- Matn -> Word / PDF hujjat ----------
+
+def _split_title(text: str):
+    """Birinchi qator qisqa bo'lsa, uni sarlavha deb ajratadi."""
+    text = text.strip()
+    lines = text.split("\n")
+    first = lines[0].strip()
+    rest = "\n".join(lines[1:]).strip()
+    if rest and 0 < len(first) <= 80:
+        return first, rest
+    return None, text
+
+
+def text_to_docx(text: str) -> bytes:
+    """Matndan chiroyli Word (.docx) hujjat yasaydi (Times New Roman 14, 1.5 interval)."""
+    from docx import Document
+    from docx.shared import Pt, Inches
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    title, body = _split_title(text)
+    doc = Document()
+    normal = doc.styles["Normal"]
+    normal.font.name = "Times New Roman"
+    normal.font.size = Pt(14)
+
+    if title:
+        h = doc.add_paragraph()
+        h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = h.add_run(title)
+        run.bold = True
+        run.font.size = Pt(16)
+        run.font.name = "Times New Roman"
+        doc.add_paragraph()
+
+    for para in body.split("\n"):
+        p = doc.add_paragraph(para)
+        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        pf = p.paragraph_format
+        pf.line_spacing = 1.5
+        if para.strip():
+            pf.first_line_indent = Inches(0.5)
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+def text_to_pdf(text: str) -> bytes:
+    """Matndan PDF hujjat yasaydi (o'zbek/kirill harflar uchun DejaVu shrift)."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    if "DejaVu" not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont("DejaVu", os.path.join(BASE_DIR, "fonts", "DejaVuSans.ttf")))
+
+    title, body = _split_title(text)
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        topMargin=2 * cm, bottomMargin=2 * cm, leftMargin=2.5 * cm, rightMargin=1.5 * cm,
+    )
+    body_style = ParagraphStyle(
+        "body", fontName="DejaVu", fontSize=14, leading=21,
+        alignment=TA_JUSTIFY, firstLineIndent=1 * cm, spaceAfter=6)
+    title_style = ParagraphStyle(
+        "title", fontName="DejaVu", fontSize=16, leading=22,
+        alignment=TA_CENTER, spaceAfter=14)
+
+    story = []
+    if title:
+        story.append(Paragraph(html.escape(title), title_style))
+    for para in body.split("\n"):
+        if para.strip():
+            story.append(Paragraph(html.escape(para).replace("  ", "&nbsp; "), body_style))
+        else:
+            story.append(Spacer(1, 10))
+    doc.build(story)
+    return buf.getvalue()

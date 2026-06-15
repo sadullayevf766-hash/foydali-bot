@@ -80,12 +80,17 @@ def _start_health_server():
         log.exception("Health server ishga tushmadi")
 
 # Tugmalar matni — asosiy menyu
+B_TEXT2DOC = "📝 Matn → Word/PDF"
 B_FILES = "📂 Fayl & Rasm"
 B_ACCT = "🧮 Buxgalter"
 B_QR = "⚡ QR-kod"
 B_RATES = "💱 Valyuta kursi"
 B_PREMIUM = "💎 Premium"
 B_BACK = "⬅️ Orqaga"
+
+# Matn -> hujjat bo'limi
+B_MK_WORD = "📄 Word hujjat"
+B_MK_PDF = "📑 PDF hujjat"
 
 # Fayl/rasm bo'limi
 B_PDF = "📄 Rasm → PDF"
@@ -106,8 +111,11 @@ B_CANCEL = "❌ Bekor qilish"
 MAX_FILE_SIZE = 20 * 1024 * 1024
 
 MAIN_KB = ReplyKeyboardMarkup(
-    [[B_FILES], [B_ACCT], [B_QR, B_RATES], [B_PREMIUM]],
+    [[B_TEXT2DOC], [B_FILES], [B_ACCT], [B_QR, B_RATES], [B_PREMIUM]],
     resize_keyboard=True,
+)
+TEXT2DOC_KB = ReplyKeyboardMarkup(
+    [[B_MK_WORD, B_MK_PDF], [B_CANCEL]], resize_keyboard=True
 )
 FILES_KB = ReplyKeyboardMarkup(
     [[B_PDF, B_MERGE], [B_SPLIT, B_COMPRESS], [B_RESIZE], [B_BACK]],
@@ -126,6 +134,7 @@ def reset(context):
     context.user_data["mode"] = None
     context.user_data["images"] = []
     context.user_data["pdfs"] = []
+    context.user_data["text_buf"] = []
 
 
 # ---------- Buyruqlar ----------
@@ -137,6 +146,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         f"Assalomu alaykum, {u.first_name}! 👋\n\n"
         "Men *Foydali Bot*man — ishingizni yengillashtiraman:\n\n"
+        "📝 *Matn → Word/PDF*\n"
+        "   • Insho, ma'ruza, referatingizni yozing —\n"
+        "     men chiroyli Word yoki PDF qilib beraman\n\n"
         "📂 *Fayl & Rasm*\n"
         "   • Rasm → PDF, PDF birlashtirish/bo'lish\n"
         "   • Rasm siqish/kichraytirish\n\n"
@@ -224,6 +236,22 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if text == B_TEXT2DOC:
+        reset(context); context.user_data["mode"] = "text2doc"
+        await update.message.reply_text(
+            "📝 *Matn → Word/PDF*\n\n"
+            "Matningizni yuboring (insho, ma'ruza, referat...). "
+            "Uzun bo'lsa bir nechta xabarda yuborsangiz ham bo'ladi.\n\n"
+            "💡 Birinchi qatorni mavzu (sarlavha) qilib yozsangiz — markazda "
+            "qalin chiqadi.\n\n"
+            "Tugagach 📄 *Word* yoki 📑 *PDF* tugmasini bosing.",
+            parse_mode="Markdown", reply_markup=TEXT2DOC_KB)
+        return
+
+    if text in (B_MK_WORD, B_MK_PDF):
+        await _make_document(update, context, "word" if text == B_MK_WORD else "pdf")
+        return
+
     # --- Fayl/rasm amallari (rejimni o'rnatadi) ---
     if text == B_PDF:
         reset(context); context.user_data["mode"] = "pdf"
@@ -307,6 +335,13 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- Rejimga qarab matnni qayta ishlash ---
     mode = context.user_data.get("mode")
+    if mode == "text2doc":
+        context.user_data.setdefault("text_buf", []).append(text)
+        n = sum(len(p) for p in context.user_data["text_buf"])
+        await update.message.reply_text(
+            f"✅ Qabul qilindi ({n} belgi). Yana matn yuboring yoki "
+            "📄 Word / 📑 PDF tugmasini bosing.", reply_markup=TEXT2DOC_KB)
+        return
     if mode == "qr":
         png = utils.make_qr(text)
         await update.message.reply_photo(
@@ -407,6 +442,40 @@ async def _handle_convert(update: Update, text: str):
         lines.append(f"\n_(Markaziy bank kursi, {dt})_")
         await update.message.reply_text(
             "\n".join(lines), parse_mode="Markdown", reply_markup=ACCT_KB)
+
+
+# ---------- Matn -> Word/PDF hujjat ----------
+
+async def _make_document(update: Update, context: ContextTypes.DEFAULT_TYPE, fmt: str):
+    user_id = update.effective_user.id
+    parts = context.user_data.get("text_buf", [])
+    full = "\n".join(parts).strip()
+    if not full:
+        await update.message.reply_text(
+            "Avval matningizni yuboring 🙂", reply_markup=TEXT2DOC_KB)
+        return
+    if not db.consume_quota(user_id):
+        await _limit_reached(update)
+        return
+    await update.message.chat.send_action("upload_document")
+    try:
+        if fmt == "word":
+            data = utils.text_to_docx(full)
+            fname = "hujjat.docx"
+        else:
+            data = utils.text_to_pdf(full)
+            fname = "hujjat.pdf"
+        await update.message.reply_document(
+            document=InputFile(data, filename=fname),
+            caption="✅ Hujjatingiz tayyor!\n\n" + _quota_caption(user_id),
+            reply_markup=MAIN_KB)
+    except Exception:
+        log.exception("hujjat xatolik")
+        await update.message.reply_text(
+            "❌ Hujjat yaratishda xatolik. Qaytadan urinib ko'ring.",
+            reply_markup=MAIN_KB)
+    finally:
+        reset(context)
 
 
 async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
