@@ -173,6 +173,16 @@ async def premium_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def kurs_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Tezkor valyuta kursi — /kurs buyrug'i."""
+    reset(context)
+    try:
+        msg = await utils.get_rates()
+    except Exception:
+        msg = "❌ Kurs olishda xatolik. Birozdan keyin urinib ko'ring."
+    await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=MAIN_KB)
+
+
 async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != config.ADMIN_ID:
         return
@@ -619,6 +629,7 @@ def main():
     app = Application.builder().token(config.BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("kurs", kurs_cmd))
     app.add_handler(CommandHandler("premium", premium_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
     app.add_handler(MessageHandler(filters.PHOTO, on_photo))
