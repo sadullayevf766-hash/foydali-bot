@@ -8,3 +8,4 @@ logo.png
 # Loglar token'ni URL'larda o'z ichiga oladi — hech qachon yuklamang!
 *.log
 bot.log*
+*.bak

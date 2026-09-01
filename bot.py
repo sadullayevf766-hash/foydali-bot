@@ -12,12 +12,16 @@ from telegram import (
     ReplyKeyboardMarkup,
     LabeledPrice,
     InputFile,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
 )
 from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
     PreCheckoutQueryHandler,
+    InlineQueryHandler,
+    CallbackQueryHandler,
     ContextTypes,
     filters,
 )
@@ -25,6 +29,8 @@ from telegram.ext import (
 import config
 import db
 import utils
+import growth
+import growth_db
 
 # Loglar: konsolga VA faylga (bot.log) yoziladi — pythonw/avtoyuklashda ham ko'rinadi
 _LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot.log")
@@ -142,6 +148,10 @@ def reset(context):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     u = update.effective_user
     db.add_user(u.id, u.username or "", u.first_name or "")
+    # Foydalanuvchi qaydi yaratilgandan KEYIN chaqiriladi: referal bog'lanishi
+    # uchun ikkala tomon ham bazada bo'lishi shart.
+    source = await growth.handle_start_payload(update, context)
+    growth_db.track(u.id, "start", source)
     reset(context)
     text = (
         f"Assalomu alaykum, {u.first_name}! 👋\n\n"
@@ -157,9 +167,31 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "   • 🧾 QQS (12%) hisoblash\n"
         "   • 🔄 Valyuta konvertor\n\n"
         "⚡ *QR-kod*  •  💱 *Valyuta kursi*\n\n"
+        "💬 *Guruhlarda ham ishlayman:* istalgan chatda "
+        f"`@{{}}` deb yozing va kurs yoki QR yuboring.\n\n"
+        "🎁 Do'stni taklif qiling → 3 kun Premium bepul: /taklif\n\n"
         "Pastdagi tugmalardan birini tanlang 👇"
     )
+    text = text.format(context.bot.username)
     await update.message.reply_text(text, parse_mode="Markdown", reply_markup=MAIN_KB)
+
+
+# Tarif kodi -> (nomi, kun, narx). To'lov payload'ida shu kod yuriydi,
+# shuning uchun to'lov kelganda qaysi tarif ekani aniq bo'ladi.
+PLANS = {
+    "premium_30": ("30 kun", config.PREMIUM_DAYS, config.PREMIUM_PRICE_STARS),
+    "premium_365": ("1 yil", config.PREMIUM_YEAR_DAYS, config.PREMIUM_YEAR_PRICE_STARS),
+}
+
+
+def _plans_kb() -> InlineKeyboardMarkup:
+    rows = []
+    for code, (name, days, price) in PLANS.items():
+        per_month = price / max(1, days / 30)
+        note = "" if code == "premium_30" else f" · oyiga ~{per_month:.0f} ⭐"
+        rows.append([InlineKeyboardButton(
+            f"{name} — {price} ⭐{note}", callback_data=code)])
+    return InlineKeyboardMarkup(rows)
 
 
 async def premium_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -171,17 +203,13 @@ async def premium_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=MAIN_KB,
         )
         return
-    await context.bot.send_invoice(
-        chat_id=update.effective_chat.id,
-        title="💎 Premium obuna",
-        description=(
-            f"{config.PREMIUM_DAYS} kun cheksiz foydalanish. "
-            "Kunlik limitlarsiz PDF va birlashtirish."
-        ),
-        payload="premium_30",
-        provider_token="",  # Telegram Stars uchun bo'sh qoldiriladi
-        currency="XTR",
-        prices=[LabeledPrice("Premium", config.PREMIUM_PRICE_STARS)],
+    await update.message.reply_text(
+        "💎 *Premium* — kunlik limitsiz foydalanish.\n\n"
+        f"To'lov Telegram Stars orqali: bank kartasi yoki Click/Payme kerak emas.\n\n"
+        f"🎁 Bepul variant ham bor: do'stingizni taklif qiling → "
+        f"{growth_db.REF_BONUS_DAYS} kun Premium. /taklif",
+        parse_mode="Markdown",
+        reply_markup=_plans_kb(),
     )
 
 
@@ -199,12 +227,26 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != config.ADMIN_ID:
         return
     s = db.stats()
+    f = growth_db.funnel(30)
+    srcs = growth_db.top_sources(30)
+    src_lines = "\n".join(f"   • {name}: {n}" for name, n in srcs) or "   • (manba yozilmagan)"
+    # Voronka: qaysi bosqichda odam yo'qolayotganini ko'rsatadi.
     await update.message.reply_text(
         f"📊 *Statistika*\n\n"
         f"👥 Jami foydalanuvchi: {s['total']}\n"
         f"🟢 Bugun faol: {s['active_today']}\n"
         f"💎 Premium: {s['premium']}\n"
-        f"⭐ Daromad: {s['revenue_stars']} Stars",
+        f"⭐ Daromad: *{s['revenue_stars']} Stars*\n\n"
+        f"📈 *30 kunlik voronka* (odam soni)\n"
+        f"   1. /start bosgan: {f['start']}\n"
+        f"   2. Amal bajargan: {f['action']}\n"
+        f"   3. Limitga yetgan: {f['limit_hit']}\n"
+        f"   4. To'lov oynasi ochgan: {f['invoice']}\n"
+        f"   5. *To'lagan: {f['paid']}*\n\n"
+        f"💬 Inline ishlatgan: {f['inline']} kishi ({f['inline_uses']} marta)\n"
+        f"🎁 Referal orqali kelgan: {f['referred_users']}\n"
+        f"🆕 Bugun start: {f['starts_today']}\n\n"
+        f"🔗 *Manbalar:*\n{src_lines}",
         parse_mode="Markdown",
     )
 
@@ -459,8 +501,7 @@ async def _make_document(update: Update, context: ContextTypes.DEFAULT_TYPE, fmt
         await update.message.reply_text(
             "Avval matningizni yuboring 🙂", reply_markup=TEXT2DOC_KB)
         return
-    if not db.consume_quota(user_id):
-        await _limit_reached(update)
+    if not await _use_quota(update, context, user_id):
         return
     await update.message.chat.send_action("upload_document")
     try:
@@ -512,8 +553,7 @@ async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _process_single_image(update, context, mode, data):
     user_id = update.effective_user.id
-    if not db.consume_quota(user_id):
-        await _limit_reached(update)
+    if not await _use_quota(update, context, user_id):
         return
     try:
         if mode == "compress":
@@ -566,8 +606,7 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # split — darhol bo'lish (kvota sarflanadi)
     user_id = update.effective_user.id
-    if not db.consume_quota(user_id):
-        await _limit_reached(update)
+    if not await _use_quota(update, context, user_id):
         return
     try:
         zip_bytes, pages = utils.split_pdf(data)
@@ -592,8 +631,7 @@ async def finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not images:
             await update.message.reply_text("Avval rasm yuboring.", reply_markup=DONE_KB)
             return
-        if not db.consume_quota(user_id):
-            await _limit_reached(update)
+        if not await _use_quota(update, context, user_id):
             return
         try:
             pdf = utils.images_to_pdf(images)
@@ -618,8 +656,7 @@ async def finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Birlashtirish uchun kamida 2 ta PDF kerak.", reply_markup=DONE_KB
             )
             return
-        if not db.consume_quota(user_id):
-            await _limit_reached(update)
+        if not await _use_quota(update, context, user_id):
             return
         try:
             merged = utils.merge_pdfs(pdfs)
@@ -644,20 +681,85 @@ def _quota_caption(user_id: int) -> str:
     left = db.remaining_quota(user_id)
     if left == -1:
         return "✅ Tayyor! (💎 Premium — cheksiz)"
-    return f"✅ Tayyor!\n\nBugun yana {left} ta bepul amal qoldi."
+    tail = f"✅ Tayyor!\n\nBugun yana {left} ta bepul amal qoldi."
+    # Har bir natijada ko'rinadi: bu botning asosiy tarqalish yo'li.
+    if left <= 2:
+        tail += (
+            f"\n\n🎁 Do'stni taklif qiling → {growth_db.REF_BONUS_DAYS} kun "
+            "Premium bepul: /taklif"
+        )
+    return tail
 
 
-async def _limit_reached(update: Update):
+async def _use_quota(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int) -> bool:
+    """Bitta bepul amalni hisoblaydi.
+
+    Limit tugagan bo'lsa to'lov oynasini ochadi va False qaytaradi. Amal
+    o'tgan bo'lsa, foydalanuvchini taklif qilgan odamga bonus beriladi —
+    haqiqiy foydalanishdan keyin, /start bosishdan emas.
+    """
+    if not db.consume_quota(user_id):
+        growth_db.track(user_id, "limit_hit")
+        await _limit_reached(update, context)
+        return False
+    growth_db.track(user_id, "action")
+    await growth.credit_referrer_if_due(update, context)
+    return True
+
+
+async def _limit_reached(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Limit tugadi. Tugma qidirishni so'ramaymiz — hisobni darhol ko'rsatamiz."""
     await update.message.reply_text(
         "⏳ *Bugungi bepul limit tugadi.*\n\n"
-        "💎 *Premium* oling — cheksiz foydalaning. "
-        "Pastdagi 💎 Premium tugmasini bosing.",
+        f"💎 *Premium* — {config.PREMIUM_DAYS} kun cheksiz, "
+        f"{config.PREMIUM_PRICE_STARS} ⭐ (Telegram Stars).\n\n"
+        f"🎁 Yoki bepul: do'stingizni taklif qiling → "
+        f"{growth_db.REF_BONUS_DAYS} kun Premium. /taklif",
         parse_mode="Markdown",
-        reply_markup=MAIN_KB,
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton(
+                f"💎 {config.PREMIUM_DAYS} kun — {config.PREMIUM_PRICE_STARS} ⭐",
+                callback_data="premium_30")],
+            [InlineKeyboardButton(
+                f"💎 1 yil — {config.PREMIUM_YEAR_PRICE_STARS} ⭐ (arzonroq)",
+                callback_data="premium_365")],
+            [InlineKeyboardButton("🎁 Bepul olish — do'stni taklif qilish",
+                                  switch_inline_query="")],
+        ]),
     )
+    growth_db.track(user_id_of(update), "invoice_offered")
+
+
+def user_id_of(update: Update) -> int:
+    return update.effective_user.id if update.effective_user else 0
 
 
 # ---------- To'lov ----------
+
+async def on_buy_premium(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Limit xabaridagi 💎 tugmasi — hisobni shu yerda ochamiz."""
+    q = update.callback_query
+    await q.answer()
+    user_id = q.from_user.id
+    if db.is_premium(user_id):
+        await q.message.reply_text("✅ Sizda Premium allaqachon faol.")
+        return
+    code = q.data if q.data in PLANS else "premium_30"
+    name, days, price = PLANS[code]
+    growth_db.track(user_id, "invoice", code)
+    await context.bot.send_invoice(
+        chat_id=q.message.chat_id,
+        title=f"💎 Premium — {name}",
+        description=(
+            f"{days} kun cheksiz foydalanish. "
+            "Kunlik limitlarsiz PDF, QR, hujjat va birlashtirish."
+        ),
+        payload=code,
+        provider_token="",  # Telegram Stars uchun bo'sh qoldiriladi
+        currency="XTR",
+        prices=[LabeledPrice(f"Premium {name}", price)],
+    )
+
 
 async def precheckout(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.pre_checkout_query.answer(ok=True)
@@ -665,15 +767,40 @@ async def precheckout(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def on_paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sp = update.message.successful_payment
-    user_id = update.effective_user.id
-    db.grant_premium(user_id, config.PREMIUM_DAYS)
+    user = update.effective_user
+    user_id = user.id
+    # Qaysi tarif sotib olingani hisob payload'idan aniqlanadi.
+    name, days, _price = PLANS.get(sp.invoice_payload, PLANS["premium_30"])
+    db.grant_premium(user_id, days)
     db.record_payment(user_id, sp.total_amount)
+    
+    # Foydalanuvchiga javob
     await update.message.reply_text(
-        f"🎉 Rahmat! *Premium* {config.PREMIUM_DAYS} kunga faollashtirildi. "
+        f"🎉 Rahmat! *Premium* ({name}) faollashtirildi. "
         "Endi cheksiz foydalaning!",
         parse_mode="Markdown",
         reply_markup=MAIN_KB,
     )
+
+    # Adminni xabardor qilish
+    if config.ADMIN_ID:
+        try:
+            username_str = f"@{user.username}" if user.username else "mavjud emas"
+            admin_msg = (
+                f"💰 *Yangi to'lov!*\n\n"
+                f"👤 Foydalanuvchi: {user.first_name} {user.last_name or ''}\n"
+                f"🆔 ID: `{user.id}`\n"
+                f"✉️ Username: {username_str}\n"
+                f"⭐ To'lov miqdori: *{sp.total_amount} Stars*\n"
+                f"💎 Tarif: {name} ({days} kun)."
+            )
+            await context.bot.send_message(
+                chat_id=config.ADMIN_ID,
+                text=admin_msg,
+                parse_mode="Markdown",
+            )
+        except Exception:
+            log.exception("Admin xabardor qilishda xatolik yuz berdi")
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
@@ -700,6 +827,7 @@ def main():
     _ensure_single_instance()
     _start_health_server()  # Render/bulut uchun (PORT env bo'lsa)
     db.init_db()
+    growth_db.migrate()
     app = Application.builder().token(config.BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -708,6 +836,9 @@ def main():
     app.add_handler(CommandHandler("stats", stats_cmd))
     app.add_handler(MessageHandler(filters.PHOTO, on_photo))
     app.add_handler(MessageHandler(filters.Document.ALL, on_document))
+    app.add_handler(CommandHandler("taklif", growth.invite_cmd))
+    app.add_handler(InlineQueryHandler(growth.inline_query))
+    app.add_handler(CallbackQueryHandler(on_buy_premium, pattern="^premium_(30|365)$"))
     app.add_handler(PreCheckoutQueryHandler(precheckout))
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, on_paid))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
