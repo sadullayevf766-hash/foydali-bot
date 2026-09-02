@@ -90,7 +90,6 @@ B_TEXT2DOC = "📝 Matn → Word/PDF"
 B_FILES = "📂 Fayl & Rasm"
 B_ACCT = "🧮 Buxgalter"
 B_QR = "⚡ QR-kod"
-B_RATES = "💱 Valyuta kursi"
 B_PREMIUM = "💎 Premium"
 B_BACK = "⬅️ Orqaga"
 
@@ -117,7 +116,7 @@ B_CANCEL = "❌ Bekor qilish"
 MAX_FILE_SIZE = 20 * 1024 * 1024
 
 MAIN_KB = ReplyKeyboardMarkup(
-    [[B_TEXT2DOC], [B_FILES], [B_ACCT], [B_QR, B_RATES], [B_PREMIUM]],
+    [[B_TEXT2DOC], [B_FILES], [B_ACCT], [B_QR], [B_PREMIUM]],
     resize_keyboard=True,
 )
 TEXT2DOC_KB = ReplyKeyboardMarkup(
@@ -166,9 +165,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "   • 💵 Son → so'zda (hujjatlar uchun)\n"
         "   • 🧾 QQS (12%) hisoblash\n"
         "   • 🔄 Valyuta konvertor\n\n"
-        "⚡ *QR-kod*  •  💱 *Valyuta kursi*\n\n"
+        "⚡ *QR-kod*\n\n"
         "💬 *Guruhlarda ham ishlayman:* istalgan chatda "
-        f"`@{{}}` deb yozing va kurs yoki QR yuboring.\n\n"
+        f"`@{{}}` deb yozing — QR yoki son→so'z darhol chiqadi.\n\n"
         "🎁 Do'stni taklif qiling → 3 kun Premium bepul: /taklif\n\n"
         "Pastdagi tugmalardan birini tanlang 👇"
     )
@@ -211,16 +210,6 @@ async def premium_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
         reply_markup=_plans_kb(),
     )
-
-
-async def kurs_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Tezkor valyuta kursi — /kurs buyrug'i."""
-    reset(context)
-    try:
-        msg = await utils.get_rates()
-    except Exception:
-        msg = "❌ Kurs olishda xatolik. Birozdan keyin urinib ko'ring."
-    await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=MAIN_KB)
 
 
 async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -361,13 +350,6 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=DONE_KB)
         return
 
-    if text == B_RATES:
-        reset(context)
-        try:
-            msg = await utils.get_rates()
-        except Exception:
-            msg = "❌ Kurs olishda xatolik. Birozdan keyin urinib ko'ring."
-        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=MAIN_KB)
         return
 
     if text == B_PREMIUM:
@@ -831,7 +813,6 @@ def main():
     app = Application.builder().token(config.BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("kurs", kurs_cmd))
     app.add_handler(CommandHandler("premium", premium_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
     app.add_handler(MessageHandler(filters.PHOTO, on_photo))

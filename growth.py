@@ -164,27 +164,22 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = context.bot.username
     results = []
 
-    kurs_words = ("kurs", "dollar", "valyuta", "usd", "dollor", "курс")
-    wants_rates = not query or query.lower() in kurs_words
-
-    # 1. Valyuta kursi — guruhlarda eng ko'p so'raladigan narsa.
-    if wants_rates:
-        try:
-            rates = await utils.get_rates()
-        except Exception:
-            rates = None
-        if rates:
-            results.append(
-                InlineQueryResultArticle(
-                    id=_uid("rates", rates[:40]),
-                    title="💱 Valyuta kursi",
-                    description="Markaziy bank kursini shu chatga yuborish",
-                    input_message_content=InputTextMessageContent(
-                        rates, parse_mode="Markdown"
-                    ),
-                    reply_markup=share_kb(username),
-                )
+    # Bo'sh so'rov = "ulashish" tugmasi bosilgan. Bunda botni tanishtiramiz.
+    if not query:
+        results.append(
+            InlineQueryResultArticle(
+                id=_uid("about", username),
+                title="🤖 Foydali Bot",
+                description="PDF, QR, hujjat va buxgalter hisoblari — bepul",
+                input_message_content=InputTextMessageContent(
+                    "🤖 *Foydali Bot* — rasmni PDF qiladi, PDF birlashtiradi, "
+                    "QR kod yaratadi, matnni Word/PDF hujjat qiladi.\n\n"
+                    f"{bot_link(username)}",
+                    parse_mode="Markdown",
+                ),
+                reply_markup=share_kb(username),
             )
+        )
 
     # 2. Son -> so'z. Hujjat va shartnomalarda kerak bo'ladi.
     digits = query.replace(" ", "").replace("_", "")
@@ -207,7 +202,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
             log.debug("Son so'zga aylantirilmadi: %s", digits)
 
     # 3. QR kod — saqlash chati sozlangan bo'lsa rasmni shu yerda qaytaramiz.
-    if query and not wants_rates and len(query) <= 500:
+    if query and len(query) <= 500:
         file_id = await _qr_file_id(context, query)
         if file_id:
             results.append(
@@ -229,7 +224,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     title="⚡ QR kod yaratish",
                     description="Botda ochiladi",
                     input_message_content=InputTextMessageContent(
-                        f"⚡ QR kod, PDF va valyuta kursi uchun: {bot_link(username)}"
+                        f"⚡ QR kod, PDF va hujjat tayyorlash: {bot_link(username)}"
                     ),
                     reply_markup=share_kb(username),
                 )
@@ -243,7 +238,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cache_time=60,
         is_personal=False,
         button=InlineQueryResultsButton(
-            text="🤖 Botni ochish — PDF, QR, kurs",
+            text="🤖 Botni ochish — PDF, QR, hujjat",
             start_parameter="inline",
         ),
     )

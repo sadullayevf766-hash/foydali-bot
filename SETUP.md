@@ -16,11 +16,11 @@ rejim (botning o'zi tarqalishining asosiy yo'li) umuman ishlamaydi.
 → botingizni tanlang → placeholder matnini yuboring:
 
 ```
-kurs, QR yoki son yozing...
+QR uchun matn yoki son yozing...
 ```
 
-**Nega muhim:** shundan keyin har qanday guruhda `@botingiz` deb yozib kurs
-yoki QR yuborish mumkin bo'ladi. Telegram bunday xabar tepasiga avtomatik
+**Nega muhim:** shundan keyin har qanday guruhda `@botingiz` deb yozib QR
+kod yoki son→so'z yuborish mumkin bo'ladi. Telegram bunday xabar tepasiga avtomatik
 **"via @botingiz"** deb yozadi — guruhdagi hamma ko'radi va bosishi mumkin.
 Bu reklama emas, oddiy foydalanishning yon ta'siri. Sizdan hech narsa talab
 qilmaydi.
@@ -42,8 +42,10 @@ qiladi. Shuning uchun QR rasmi avval biror chatga yuborilib, keyin ishlatiladi.
 STORAGE_CHAT_ID=-1001234567890
 ```
 
-Agar bu qadamni o'tkazib yuborsangiz: inline'da kurs va son→so'z ishlaydi,
-QR o'rniga botga havola chiqadi. Bot buzilmaydi.
+Agar bu qadamni o'tkazib yuborsangiz: inline'da son→so'z ishlaydi, QR
+o'rniga botga havola chiqadi. Bot buzilmaydi — lekin valyuta olib
+tashlangandan keyin QR inline'ning asosiy natijasi, shuning uchun bu
+qadam endi ancha muhim.
 
 ---
 
@@ -53,7 +55,6 @@ BotFather'da `/setcommands` → botni tanlang → shuni yuboring:
 
 ```
 start - Boshlash
-kurs - Valyuta kursi
 taklif - Do'stni taklif qilish (bepul Premium)
 premium - Premium obuna
 ```
@@ -68,13 +69,13 @@ Bu sizning yagona bepul trafik manbangiz. Telegram bot qidiruvi **nom** va
 `/setdescription` → botni tanlang → shuni yuboring:
 
 ```
-Rasmni PDF qiladi, PDF birlashtiradi va bo'ladi, QR kod yaratadi, matnni Word/PDF hujjat qiladi, valyuta kursini ko'rsatadi, sonni so'z bilan yozadi. Talabalar va buxgalterlar uchun. Bepul.
+Rasmni PDF qiladi, PDF birlashtiradi va bo'ladi, QR kod yaratadi, matnni Word/PDF hujjat qiladi, sonni so'z bilan yozadi, QQS hisoblaydi. Talabalar va buxgalterlar uchun. Bepul.
 ```
 
 `/setabouttext` → botni tanlang:
 
 ```
-PDF, QR, valyuta kursi va hujjat tayyorlash — bitta botda. Bepul.
+PDF, QR va hujjat tayyorlash — bitta botda. Bepul.
 ```
 
 **Bot nomi** (`/setname`) ham qidiruvga ta'sir qiladi. Hozirgi "Foydali Bot"
@@ -107,7 +108,7 @@ Ishga tushgach `/stats` yuboring — yangi voronka statistikasi ko'rinishi kerak
 
 | O'zgarish | Nima beradi |
 | --- | --- |
-| Inline rejim (`@bot kurs`, `@bot 5000`, `@bot matn`) | Guruhlarda "via @bot" — asosiy tarqalish yo'li |
+| Inline rejim (`@bot 5000`, `@bot matn`) | Guruhlarda "via @bot" — asosiy tarqalish yo'li |
 | Referal: `/taklif` | Taklif qilgan 3 kun Premium oladi. Bonus faqat taklif qilingan odam **haqiqatan foydalangandan** keyin — soxta akkaunt yig'ish foydasiz |
 | Limit xabari | Avval "tugmani bosing" der edi. Endi to'lov tugmalari darhol chiqadi |
 | Ikki tarif: 30 kun 25 ⭐ / 1 yil 150 ⭐ | Qimmatrog'i oqilona ko'rinadi, o'rtacha tushum oshadi |

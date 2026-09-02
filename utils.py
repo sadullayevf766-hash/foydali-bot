@@ -69,41 +69,6 @@ async def _fetch_latest_rates(client: httpx.AsyncClient) -> list:
     return resp.json()
 
 
-async def get_rates(codes: list[str] | None = None) -> str:
-    """Markaziy bank kurslarini matn ko'rinishida qaytaradi."""
-    codes = codes or ["USD", "EUR", "RUB", "KZT"]
-    async with httpx.AsyncClient(timeout=15) as client:
-        data = await _fetch_latest_rates(client)
-    by_code = {item["Ccy"]: item for item in data}
-    lines = ["💱 *Markaziy bank rasmiy kursi*\n_(1 birlik = O'zbek so'mi)_\n"]
-    for code in codes:
-        item = by_code.get(code)
-        if not item:
-            continue
-        rate = _fmt_som(item.get("Rate", "—"))
-        diff = item.get("Diff") or "0"
-        try:
-            d = float(diff)
-            arrow = "🔺" if d > 0 else ("🔻" if d < 0 else "▪️")
-        except (ValueError, TypeError):
-            arrow = "▪️"
-        lines.append(f"{arrow} *{code}* — {rate} so'm  ({diff})")
-    lines.append(f"\n📅 Sana: {data[0]['Date']}")
-    lines.append("ℹ️ Bu — rasmiy kurs. Bank yoki shoxobchada narx biroz farq qilishi mumkin.")
-    return "\n".join(lines)
-
-
-def _fmt_som(rate_str: str) -> str:
-    """Raqamni o'qishga qulay formatga keltiradi: 12014.48 -> '12 014'."""
-    try:
-        v = float(rate_str)
-    except (ValueError, TypeError):
-        return str(rate_str)
-    if v >= 100:
-        return f"{v:,.0f}".replace(",", " ")
-    return f"{v:.2f}"
-
-
 async def get_rate_map() -> dict:
     """Valyuta kodlari -> kurs (float) lug'atini qaytaradi (konvertor uchun)."""
     async with httpx.AsyncClient(timeout=15) as client:

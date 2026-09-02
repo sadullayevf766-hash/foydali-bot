@@ -5,7 +5,6 @@ Telegram uchun foydali utility bot. Kundalik kerakli 4 ta vosita bitta joyda:
 - 📄 **Rasm → PDF** — rasmlarni bitta PDF fayl qiladi
 - 🔗 **PDF birlashtirish** — bir nechta PDF'ni bittaga qo'shadi
 - ⚡ **QR-kod** — istalgan matn/havoladan QR-kod
-- 💱 **Valyuta kursi** — O'zbekiston Markaziy banki kursi
 
 💎 **Monetizatsiya:** bepul foydalanuvchiga kunlik limit, **Premium** esa cheksiz —
 to'lov **Telegram Stars** orqali (bank yoki Click/Payme kerak emas).
@@ -107,4 +106,4 @@ Kompyuter o'chsa yoki siz chiqib ketsangiz — bot to'xtaydi. Haqiqiy uzluksiz
 - `python-telegram-bot` (async)
 - SQLite (`bot.db` — avtomatik yaratiladi)
 - Bitta-nusxa qulfi (socket 127.0.0.1:47654) — ikki marta ishlamaydi
-- Tashqi pullik API yo'q (valyuta — bepul cbu.uz)
+- Tashqi pullik API yo'q (konvertor uchun bepul cbu.uz)
