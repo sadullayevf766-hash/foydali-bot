@@ -1,20 +1,21 @@
-"""SQLite ma'lumotlar bazasi: foydalanuvchilar, limitlar, premium."""
-import sqlite3
+"""Foydalanuvchilar, limitlar, premium va to'lovlar.
+
+Baza ulanishi `storage.py` orqali: lokalda SQLite, bulutda Postgres.
+Sana/vaqt maydonlari ataylab MATN (ISO) sifatida saqlanadi — shunda
+taqqoslash mantiqi ikkala bazada ham bir xil ishlaydi.
+"""
 from datetime import datetime, timedelta, date
-from config import DB_PATH, FREE_DAILY_LIMIT
 
-
-def _conn():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+import storage
+from config import FREE_DAILY_LIMIT
+from storage import conn as _conn
 
 
 def init_db():
     with _conn() as c:
-        c.execute("""
+        c.execute(f"""
             CREATE TABLE IF NOT EXISTS users (
-                user_id      INTEGER PRIMARY KEY,
+                user_id      BIGINT PRIMARY KEY,
                 username     TEXT,
                 first_name   TEXT,
                 joined_at    TEXT,
@@ -23,10 +24,10 @@ def init_db():
                 usage_count  INTEGER DEFAULT 0 -- shu kungi amallar soni
             )
         """)
-        c.execute("""
+        c.execute(f"""
             CREATE TABLE IF NOT EXISTS payments (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id    INTEGER,
+                id         {storage.autoincrement_pk()},
+                user_id    BIGINT,
                 stars      INTEGER,
                 paid_at    TEXT
             )
@@ -36,8 +37,9 @@ def init_db():
 def add_user(user_id: int, username: str, first_name: str):
     with _conn() as c:
         c.execute(
-            "INSERT OR IGNORE INTO users (user_id, username, first_name, joined_at) "
-            "VALUES (?, ?, ?, ?)",
+            storage.insert_ignore(
+                "users", "user_id, username, first_name, joined_at", "?, ?, ?, ?", "user_id"
+            ),
             (user_id, username, first_name, datetime.now().isoformat()),
         )
 

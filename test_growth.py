@@ -1,29 +1,51 @@
-"""Referal va voronka mantiqini nusxa bazada sinaydi. Haqiqiy bot.db ga tegmaydi."""
+"""Referal va voronka mantiqini nusxa bazada sinaydi. Haqiqiy bot.db ga tegmaydi.
+
+DATABASE_URL o'rnatilgan bo'lsa Postgres'da, aks holda vaqtinchalik
+SQLite faylida ishlaydi.
+"""
 import os
 import shutil
-import sqlite3
 import tempfile
-from datetime import datetime
 
 tmp = tempfile.mkdtemp()
-test_db = os.path.join(tmp, "test.db")
-os.environ["DB_PATH"] = test_db
+# config DB_PATH ni env dan o'qiydi — import qilishdan OLDIN o'rnatamiz.
+os.environ["DB_PATH"] = os.path.join(tmp, "test.db")
 
-import config
-config.DB_PATH = test_db
+import storage
 import db
-db.DB_PATH = test_db
 import growth_db
-growth_db.DB_PATH = test_db
+
+print(f"Baza: {storage.label()}")
+
+# Test ID lari — haqiqiy Telegram ID lari bunchalik kichik bo'lmaydi, shuning
+# uchun to'qnashuv xavfi yo'q. Postgres'da sinaganda haqiqiy bazaga yozamiz,
+# shuning uchun oxirida (va boshida) shu yozuvlarni tozalaymiz.
+TEST_IDS = (111, 222, 333, 999)
+
+
+def cleanup():
+    with storage.conn() as c:
+        for table, col in (("events", "user_id"), ("payments", "user_id"), ("users", "user_id")):
+            for uid in TEST_IDS:
+                try:
+                    c.execute(f"DELETE FROM {table} WHERE {col} = ?", (uid,))
+                except Exception:
+                    pass  # jadval hali yaratilmagan bo'lishi mumkin
+
 
 db.init_db()
 growth_db.migrate()
 growth_db.migrate()  # ikki marta chaqirish xavfsiz bo'lishi kerak
 print("migratsiya: OK (ikki marta chaqirildi)")
 
+cleanup()  # oldingi sinovdan qolgan yozuvlar bo'lsa
+
 ALICE, BOB, MALLORY = 111, 222, 333
 db.add_user(ALICE, "alice", "Alice")
 db.add_user(BOB, "bob", "Bob")
+db.add_user(ALICE, "alice", "Alice")  # takror qo'shish yozuvni buzmasligi kerak
+assert db.stats()["total"] >= 2
+print("foydalanuvchi qo'shish (takror ham): OK")
 
 # 1. Oddiy referal
 assert growth_db.set_referrer(BOB, ALICE) is True, "referal bog'lanishi kerak edi"
@@ -53,7 +75,16 @@ assert growth_db.pending_referrer(BOB) is None, "bonus ikkinchi marta berilmasli
 assert db.is_premium(ALICE) is True, "taklifchi Premium olishi kerak"
 print("bonus bir marta berildi va Premium yoqildi: OK")
 
-# 6. Voronka
+# 6. Kvota: bepul limit tugagach False qaytarishi kerak
+for i in range(config_limit := __import__("config").FREE_DAILY_LIMIT):
+    assert db.consume_quota(BOB) is True, f"{i+1}-amal ruxsat etilishi kerak"
+assert db.consume_quota(BOB) is False, "limitdan keyin rad etilishi kerak"
+assert db.remaining_quota(BOB) == 0
+# Premium egasi limitga tushmaydi
+assert db.consume_quota(ALICE) is True and db.remaining_quota(ALICE) == -1
+print(f"kvota ({config_limit}/kun) va Premium cheksizligi: OK")
+
+# 7. Voronka
 for ev in ("start", "action", "limit_hit", "invoice"):
     growth_db.track(BOB, ev, "referal")
 growth_db.track(ALICE, "start", "guruh")
@@ -66,32 +97,20 @@ assert f["paid"] == 0, f
 assert f["referred_users"] == 1, f
 print("voronka:", {k: f[k] for k in ("start", "action", "limit_hit", "invoice", "paid")})
 
-# 7. Manbalar
+# 8. Manbalar
 srcs = dict(growth_db.top_sources(30))
 assert srcs.get("referal") == 1 and srcs.get("guruh") == 1, srcs
 print("manbalar:", srcs)
 
-# 8. To'lov voronkaga tushishi kerak
+# 9. To'lov voronkaga tushishi kerak
 db.record_payment(BOB, 25)
 f2 = growth_db.funnel(30)
 assert f2["paid"] == 1, f2
-print("to'lov voronkada ko'rindi: OK")
+assert db.stats()["revenue_stars"] >= 25
+print("to'lov voronkada va statistikada: OK")
 
-# 9. Eski bazada ham migratsiya ishlashi kerak (ustunlarsiz baza)
-old = os.path.join(tmp, "old.db")
-con = sqlite3.connect(old)
-con.execute("CREATE TABLE users (user_id INTEGER PRIMARY KEY, username TEXT, "
-            "first_name TEXT, joined_at TEXT, premium_until TEXT, usage_date TEXT, "
-            "usage_count INTEGER DEFAULT 0)")
-con.execute("CREATE TABLE payments (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, "
-            "stars INTEGER, paid_at TEXT)")
-con.execute("INSERT INTO users VALUES (1,'a','A',?,NULL,NULL,0)", (datetime.now().isoformat(),))
-con.commit(); con.close()
-growth_db.DB_PATH = old
-growth_db.migrate()
-cols = [r[1] for r in sqlite3.connect(old).execute("PRAGMA table_info(users)")]
-assert "referred_by" in cols and "ref_credited" in cols, cols
-print("eski bazaga migratsiya: OK")
-
+cleanup()
 shutil.rmtree(tmp, ignore_errors=True)
 print("\nHAMMA TEST O'TDI ✅")
+if storage.IS_POSTGRES:
+    print("Postgres yo'li tekshirildi, sinov yozuvlari tozalandi.")

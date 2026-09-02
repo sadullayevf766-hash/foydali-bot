@@ -31,6 +31,7 @@ import db
 import utils
 import growth
 import growth_db
+import storage
 
 # Loglar: konsolga VA faylga (bot.log) yoziladi — pythonw/avtoyuklashda ham ko'rinadi
 _LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bot.log")
@@ -825,6 +826,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
     app.add_error_handler(error_handler)
 
+    log.info("Baza: %s", storage.label())
     log.info("Bot ishga tushdi ✅")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 

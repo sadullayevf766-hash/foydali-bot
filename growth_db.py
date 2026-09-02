@@ -1,12 +1,15 @@
 """Referal, ulashish va voronka (funnel) uchun baza kengaytmasi.
 
-Mavjud `db.py` ga tegmasdan alohida modul: eski jadvallar o'zgarmaydi,
-faqat yangi ustun va jadvallar qo'shiladi.
+Mavjud jadvallarga tegmaydi — faqat yangi ustun va jadvallar qo'shadi.
+Ulanish `storage.py` orqali: lokalda SQLite, bulutda Postgres.
 """
-import sqlite3
+import logging
 from datetime import datetime, date
 
-from config import DB_PATH
+import storage
+from storage import conn as _conn
+
+log = logging.getLogger("foydali-bot.growth_db")
 
 # Taklif qilgan odamga beriladigan bonus (kun). Faqat taklif qilingan odam
 # botdan HAQIQATAN foydalangandan keyin beriladi — shunchaki /start bosish
@@ -14,28 +17,16 @@ from config import DB_PATH
 REF_BONUS_DAYS = 3
 
 
-def _conn():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def _has_column(c, table: str, column: str) -> bool:
-    return any(r["name"] == column for r in c.execute(f"PRAGMA table_info({table})"))
-
-
 def migrate():
     """Yangi ustun/jadvallarni qo'shadi. Bir necha marta chaqirsa ham xavfsiz."""
     with _conn() as c:
-        if not _has_column(c, "users", "referred_by"):
-            c.execute("ALTER TABLE users ADD COLUMN referred_by INTEGER")
-        if not _has_column(c, "users", "ref_credited"):
-            # 0 = taklif qilgan odamga bonus hali berilmagan
-            c.execute("ALTER TABLE users ADD COLUMN ref_credited INTEGER DEFAULT 0")
-        c.execute("""
+        storage.add_column(c, "users", "referred_by", "BIGINT")
+        # 0 = taklif qilgan odamga bonus hali berilmagan
+        storage.add_column(c, "users", "ref_credited", "INTEGER DEFAULT 0")
+        c.execute(f"""
             CREATE TABLE IF NOT EXISTS events (
-                id      INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
+                id      {storage.autoincrement_pk()},
+                user_id BIGINT,
                 event   TEXT,
                 source  TEXT,
                 at      TEXT
@@ -53,8 +44,8 @@ def track(user_id: int, event: str, source: str = ""):
                 "INSERT INTO events (user_id, event, source, at) VALUES (?, ?, ?, ?)",
                 (user_id, event, source, datetime.now().isoformat()),
             )
-    except sqlite3.Error:
-        pass
+    except Exception:
+        log.debug("Hodisa yozilmadi: %s", event)
 
 
 # ---------- Referal ----------
@@ -115,10 +106,13 @@ def referral_count(user_id: int) -> int:
 
 # ---------- Voronka hisoboti ----------
 
+def _since(days: int) -> str:
+    return datetime.fromtimestamp(datetime.now().timestamp() - days * 86400).isoformat()
+
+
 def funnel(days: int = 30) -> dict:
     """Oxirgi N kundagi voronka: start -> foydalanish -> limit -> to'lov oynasi -> to'lov."""
-    since = (datetime.now().timestamp() - days * 86400)
-    since_iso = datetime.fromtimestamp(since).isoformat()
+    since_iso = _since(days)
     out = {}
     with _conn() as c:
         for name in ("start", "action", "limit_hit", "invoice", "inline"):
@@ -142,10 +136,9 @@ def funnel(days: int = 30) -> dict:
             "SELECT COUNT(*) n FROM users WHERE referred_by IS NOT NULL AND ref_credited = 1"
         ).fetchone()
         out["referred_users"] = int(row["n"]) if row else 0
-        today = date.today().isoformat()
         row = c.execute(
             "SELECT COUNT(*) n FROM events WHERE event = 'start' AND at >= ?",
-            (today,),
+            (date.today().isoformat(),),
         ).fetchone()
         out["starts_today"] = int(row["n"]) if row else 0
     return out
@@ -153,12 +146,11 @@ def funnel(days: int = 30) -> dict:
 
 def top_sources(days: int = 30, limit: int = 8) -> list[tuple[str, int]]:
     """Yangi foydalanuvchilar qaysi manbadan kelgani (deep-link `start` parametri)."""
-    since_iso = datetime.fromtimestamp(datetime.now().timestamp() - days * 86400).isoformat()
     with _conn() as c:
         rows = c.execute(
             "SELECT source, COUNT(DISTINCT user_id) n FROM events "
             "WHERE event = 'start' AND at >= ? AND source != '' "
             "GROUP BY source ORDER BY n DESC LIMIT ?",
-            (since_iso, limit),
+            (_since(days), limit),
         ).fetchall()
     return [(r["source"], int(r["n"])) for r in rows]
