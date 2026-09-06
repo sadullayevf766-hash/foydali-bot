@@ -98,6 +98,14 @@ T = {
         ),
     },
     "skip_question": {"uz": "Savolsiz davom etish", "en": "Continue without it"},
+    "skipped_warn": {
+        "uz": ("⚠️ Savolsiz davom etyapmiz. Task mezoni baholanmaydi va "
+               "umumiy ballga qo'shilmaydi — natija faqat <b>til</b> "
+               "bo'yicha bo'ladi."),
+        "en": ("⚠️ Continuing without the question. The Task criterion will "
+               "not be assessed and is excluded from the band — the result "
+               "covers <b>language</b> only."),
+    },
     "ask_essay": {
         "uz": (
             "✍️ Endi <b>inshoingizni</b> yuboring.\n\n"
@@ -349,6 +357,24 @@ T = {
 # Natija sarlavhalari
 RES = {
     "score": {"uz": "Umumiy taxminiy ball", "en": "Estimated overall band"},
+    "score_lang_only": {
+        "uz": "Til bo'yicha taxminiy ball",
+        "en": "Estimated band — language only",
+    },
+    "no_question_warn": {
+        "uz": ("⚠️ Savol (yoki grafik) yuborilmagani uchun <b>Task</b> mezoni "
+               "baholanmadi va yuqoridagi ballga <b>qo'shilmadi</b>. Haqiqiy "
+               "umumiy ball bundan past bo'lishi mumkin — javob mavzuga to'liq "
+               "mos kelmasa, Task mezoni butun ballni tushiradi.\n"
+               "To'liq baho uchun savolni ham yuboring."),
+        "en": ("⚠️ Without the question (or the chart) the <b>Task</b> "
+               "criterion could not be assessed and is <b>excluded</b> from the "
+               "band above. Your real overall band may be lower — if the "
+               "response does not fully address the question, that criterion "
+               "pulls the whole score down.\nSend the question for a full "
+               "assessment."),
+    },
+    "not_assessed": {"uz": "baholanmadi", "en": "not assessed"},
     "words": {"uz": "So'z soni", "en": "Word count"},
     "short": {"uz": "kam — bu Task ballini pasaytiradi", "en": "under length — this lowers the task score"},
     "criteria": {"uz": "Mezonlar", "en": "Criteria"},

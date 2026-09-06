@@ -117,6 +117,28 @@ check("bo'sh iqtibos tashlandi", len(r["errors"]) == 1)
 check("upgrades 3 ta bilan cheklandi", len(r["upgrades"]) == 3)
 check("so'zlar kodda sanaldi", r["words"] == 260)
 
+print("8b) Savol yo'q bo'lsa Task mezoni o'rtachaga qo'shilmaydi")
+# Sabab: model savolsiz Task ballini "tekshirib bo'lmadi" deb pasaytiradi
+# va foydalanuvchi YO'Q MA'LUMOT uchun jazolanadi. Amalda kuzatilgan:
+# band 9 darajasidagi insho LR 8.0 / GRA 8.0 olib, umumiy 7.5 chiqdi.
+raw9 = dict(raw, criteria=[
+    {"key": "TA", "band": 7.0, "comment": "savolsiz baholab bo'lmadi"},
+    {"key": "CC", "band": 7.5, "comment": "yaxshi"},
+    {"key": "LR", "band": 8.0, "comment": "boy"},
+    {"key": "GRA", "band": 8.0, "comment": "aniq"},
+])
+with_q = grader._normalise(raw9, "task1_academic", essay, False, True)
+without_q = grader._normalise(raw9, "task1_academic", essay, False, False)
+check("savol bor: to'rttasining o'rtachasi (7.5)", with_q["overall"] == 7.5)
+check("savol yo'q: Task chiqarildi (8.0)", without_q["overall"] == 8.0)
+check("bayroq qo'yildi", without_q["task_unassessed"] is True)
+check("qaysi mezon ekani belgilandi", without_q["task_key"] == "TA")
+check("savol bor bo'lsa bayroq yo'q", with_q["task_unassessed"] is False)
+out9 = format_result(without_q, "uz", {"credits": 1, "unlimited": False, "today_left": 0})
+check("sarlavha 'til bo'yicha'", "Til bo'yicha" in out9)
+check("baholanmagan mezon raqamsiz", "TA — 7.0" not in out9 and "baholanmadi" in out9)
+check("ogohlantirish ko'rinadi", "qo'shilmadi" in out9)
+
 print("9) Mezon yetishmasa xato")
 bad = dict(raw, criteria=raw["criteria"][:3])
 try:

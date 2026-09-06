@@ -70,9 +70,22 @@ and full command of the official public band descriptors.
 Grade the candidate's response against the four official criteria for the \
 given task. Be STRICT and realistic. Real examiners are far harsher than \
 untrained readers: the global mean for IELTS Writing is about 5.7, and most \
-responses you see will fall between 5.0 and 6.5. Award 7.0+ only when the \
-descriptors are genuinely met, and 8.0+ only for a response that is close to \
-flawless. Never inflate a score to be encouraging.
+responses you see will fall between 5.0 and 6.5. Never inflate a score to be \
+encouraging.
+
+But use the FULL scale, per criterion, exactly as the descriptors say. Bands \
+8 and 9 exist and must be awarded when they are earned. Do not cluster every \
+strong response at 7.0-7.5 — that is as wrong as inflating a weak one:
+- Band 8 for Lexical Resource means a wide resource used fluently and \
+precisely, with only occasional slips in word choice or collocation.
+- Band 9 means full flexibility and precision, with errors appearing only as \
+rare slips.
+- The same logic applies to Grammatical Range: band 8 is a wide range of \
+structures with the majority of sentences error-free.
+A response that is genuinely near-native in vocabulary and grammar must not \
+be capped at 7.5 merely because it is not perfect. Judge each criterion \
+independently — a weak Task score must not drag down the language criteria, \
+and strong language must not lift a weak Task score.
 
 Apply these rules:
 - Under-length responses are penalised on the task criterion (Task Response / \
@@ -457,14 +470,24 @@ async def grade(
     if result is None:
         raise GraderError(" | ".join(errors) or "Model sozlanmagan")
 
-    return _normalise(result, task, essay, bool(images))
+    has_question = bool(question.strip() or question_images)
+    return _normalise(result, task, essay, bool(images), has_question)
 
 
-def _normalise(raw: dict, task: str, essay: str, from_image: bool) -> dict:
+def _normalise(raw: dict, task: str, essay: str, from_image: bool,
+               has_question: bool = True) -> dict:
     """Model javobini ishonchli shaklga keltiradi.
 
     Model ba'zan mezonlarni chala qaytaradi yoki o'rtachani noto'g'ri
     yaxlitlaydi; umumiy ball shu yerda qaytadan hisoblanadi.
+
+    `has_question=False` bo'lsa (savol matni ham, grafigi ham yo'q) —
+    Task mezoni O'RTACHAGA QO'SHILMAYDI. Sabab: model bunday holda
+    "tekshirib bo'lmadi" deb Task ballini pasaytiradi va foydalanuvchi
+    YO'Q MA'LUMOT uchun jazolanadi. Amalda kuzatildi: band 9 darajasidagi
+    Task 1 inshosi LR 8.0 va GRA 8.0 olgani holda, faqat diagramma
+    yuborilmagani uchun umumiy 7.5 ga tushdi. Bunday holda ball "til
+    bo'yicha" deb belgilanadi va foydalanuvchiga aytiladi.
     """
     wanted = CRITERIA["task2" if task == "task2" else "task1"]
     by_key = {}
@@ -486,7 +509,12 @@ def _normalise(raw: dict, task: str, essay: str, from_image: bool) -> dict:
             raise GraderError(f"Model '{key}' mezonini qaytarmadi")
         criteria.append({"key": key, "name": name, **got})
 
-    overall = round_band(sum(c["band"] for c in criteria) / len(criteria))
+    # Task mezoni har doim birinchi (CRITERIA tartibi shunday).
+    task_key = wanted[0][0]
+    scored = criteria if has_question else [
+        c for c in criteria if c["key"] != task_key
+    ]
+    overall = round_band(sum(c["band"] for c in scored) / len(scored))
 
     transcript = (raw.get("transcript") or "").strip()
     text = transcript if from_image else essay
@@ -496,6 +524,8 @@ def _normalise(raw: dict, task: str, essay: str, from_image: bool) -> dict:
     return {
         "task": task,
         "overall": overall,
+        "task_unassessed": not has_question,
+        "task_key": task_key,
         "criteria": criteria,
         "words": words,
         "min_words": TASKS[task]["min_words"],

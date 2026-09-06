@@ -237,7 +237,9 @@ async def on_skip_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = _lang(context, q.from_user.id)
     context.user_data["question"] = ""
     context.user_data["stage"] = "essay"
-    await q.edit_message_text(t("ask_essay", lang), parse_mode="HTML")
+    await q.edit_message_text(
+        t("skipped_warn", lang) + "\n\n" + t("ask_essay", lang), parse_mode="HTML"
+    )
 
 
 async def _run_grading(update, context, essay: str = "",
@@ -322,7 +324,11 @@ async def _run_grading(update, context, essay: str = "",
 def format_result(r: dict, lang: str, left: dict) -> str:
     """Natijani Telegram HTML ko'rinishiga keltiradi."""
     e = html.escape
-    out = [f"🎯 <b>{res('score', lang)}: {r['overall']}</b>"]
+    unassessed = r.get("task_unassessed")
+    head = res("score_lang_only", lang) if unassessed else res("score", lang)
+    out = [f"🎯 <b>{head}: {r['overall']}</b>"]
+    if unassessed:
+        out.append(res("no_question_warn", lang))
 
     short = r["words"] < r["min_words"]
     words_line = f"📝 {res('words', lang)}: {r['words']} / {r['min_words']}"
@@ -338,6 +344,11 @@ def format_result(r: dict, lang: str, left: dict) -> str:
     out.append("")
     out.append(f"<b>{res('criteria', lang)}</b>")
     for c in r["criteria"]:
+        if unassessed and c["key"] == r.get("task_key"):
+            # Savol yo'q — bu mezonni baholab bo'lmaydi. Raqam ko'rsatish
+            # yolg'on bo'lardi, chunki u o'rtachaga ham qo'shilmagan.
+            out.append(f"• <b>{c['name']} — {res('not_assessed', lang)}</b>")
+            continue
         out.append(f"• <b>{c['name']} — {c['band']}</b>\n{e(c['comment'])}")
 
     if r["summary"]:
