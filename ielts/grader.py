@@ -12,15 +12,20 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 import logging
 import re
 
 import httpx
 
-from . import config
+from . import config, db
 
 log = logging.getLogger("ielts.grader")
+
+# Prompt yoki baholash mantiqi o'zgarsa BU RAQAMNI OSHIRING — aks holda
+# eski keshdagi natijalar yangi qoidalar bilan hisoblanganday ko'rinadi.
+PROMPT_VERSION = "2026-09-06.3"
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -157,6 +162,28 @@ SCHEMA = {
 
 class GraderError(Exception):
     """Baholash amalga oshmadi — foydalanuvchi kreditini yechmaymiz."""
+
+
+def _cache_key(task: str, question: str, essay: str, images: list[bytes],
+               question_images: list[bytes], lang: str) -> str:
+    """Kirish ma'lumotlarining barmoq izi.
+
+    Rasm baytlari ham hisobga olinadi: Telegram bir xil rasmni qayta
+    yuborilganda ham bir xil baytlarni beradi, shuning uchun bir xil
+    surat bir xil kalitga tushadi. Til ham kiradi — izohlar tilga
+    bog'liq. Prompt versiyasi ham kiradi, aks holda prompt yaxshilangach
+    eski (yomonroq) natijalar keshdan chiqib qolaverardi.
+    """
+    h = hashlib.sha256()
+    h.update(PROMPT_VERSION.encode())
+    for part in (task, lang, question.strip(), essay.strip()):
+        h.update(b"\x00")
+        h.update(part.encode("utf-8", "replace"))
+    for group, blobs in (("q", question_images), ("a", images)):
+        h.update(group.encode())
+        for b in blobs:
+            h.update(hashlib.sha256(b).digest())
+    return h.hexdigest()
 
 
 def count_words(text: str) -> int:
@@ -338,7 +365,13 @@ async def _call_gemini(prompt: str, system: str,
         "system_instruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": user_parts}],
         "generationConfig": {
-            "temperature": 0.2,
+            # 0 — bir xil insho bir xil ball olishi uchun. 0.2 da ham
+            # mezonlar 0.5 band tebranardi va bu foydalanuvchiga darhol
+            # sezildi. `seed` tebranishni yanada kamaytiradi, lekin
+            # Gemini to'liq determinizmni kafolatlamaydi — shuning uchun
+            # asosiy kafolat quyidagi kesh.
+            "temperature": 0,
+            "seed": 42,
             "responseMimeType": "application/json",
             "responseSchema": SCHEMA,
         },
@@ -380,7 +413,7 @@ async def _call_openrouter(prompt: str, system: str,
         content = prompt
     body = {
         "model": config.OPENROUTER_MODEL,
-        "temperature": 0.2,
+        "temperature": 0,
         "response_format": {"type": "json_object"},
         "messages": [
             {"role": "system", "content": system + "\n\nReply with JSON only."},
@@ -427,6 +460,7 @@ async def grade(
     images: list[bytes] | None = None,
     lang: str = "uz",
     question_images: list[bytes] | None = None,
+    force: bool = False,
 ) -> dict:
     """Inshoni baholaydi va tayyor natijani qaytaradi.
 
@@ -443,6 +477,18 @@ async def grade(
     """
     images = images or []
     question_images = question_images or []
+
+    key = _cache_key(task, question, essay, images, question_images, lang)
+    if not force:
+        hit = db.cache_get(key)
+        if hit:
+            try:
+                cached = json.loads(hit)
+                cached["cached"] = True
+                return cached
+            except json.JSONDecodeError:
+                pass
+
     system = SYSTEM.format(feedback_language=lang_name(lang))
     prompt = _build_prompt(task, question, essay, lang,
                            len(images), len(question_images))
@@ -471,7 +517,10 @@ async def grade(
         raise GraderError(" | ".join(errors) or "Model sozlanmagan")
 
     has_question = bool(question.strip() or question_images)
-    return _normalise(result, task, essay, bool(images), has_question)
+    out = _normalise(result, task, essay, bool(images), has_question)
+    db.cache_put(key, json.dumps(out, ensure_ascii=False))
+    out["cached"] = False
+    return out
 
 
 def _normalise(raw: dict, task: str, essay: str, from_image: bool,

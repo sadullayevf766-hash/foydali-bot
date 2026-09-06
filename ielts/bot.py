@@ -244,7 +244,8 @@ async def on_skip_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _run_grading(update, context, essay: str = "",
                        images: list[bytes] | None = None,
-                       question_images: list[bytes] | None = None):
+                       question_images: list[bytes] | None = None,
+                       force: bool = False):
     """Baholaydi, natijani yuboradi va kreditni FAQAT muvaffaqiyatda yechadi."""
     user = update.effective_user
     lang = _lang(context, user.id)
@@ -252,11 +253,16 @@ async def _run_grading(update, context, essay: str = "",
     question = context.user_data.get("question", "")
     images = images or []
     question_images = question_images or []
+    context.user_data["last_task"] = task
+    context.user_data["last_question"] = question
+    if not images:
+        context.user_data["last_essay"] = essay
+        context.user_data["last_files"] = []
 
     if context.user_data.get("busy"):
         return
     if not db.can_check(user.id):
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             t("no_credits", lang, bonus=config.REFERRAL_BONUS),
             parse_mode="HTML", reply_markup=buy_kb(lang),
         )
@@ -269,11 +275,12 @@ async def _run_grading(update, context, essay: str = "",
         note = t("reading_photo", lang)
     else:
         note = t("working", lang)
-    wait = await update.message.reply_text(note)
+    wait = await update.effective_message.reply_text(note)
     try:
         await context.bot.send_chat_action(update.effective_chat.id, ChatAction.TYPING)
         result = await grader.grade(task, question, essay, images, lang,
-                                    question_images=question_images)
+                                    question_images=question_images,
+                                    force=force)
     except Exception as e:
         log.warning("Baholash muvaffaqiyatsiz (user %s): %s", user.id, e)
         db.track(user.id, "grade_failed")
@@ -282,9 +289,13 @@ async def _run_grading(update, context, essay: str = "",
     finally:
         context.user_data["busy"] = False
 
-    db.consume(user.id)
-    db.record_check(user.id, task, result["overall"], result["words"])
-    db.track(user.id, "graded", task)
+    # Keshdan kelgan natija — yangi ish bajarilmadi, kredit ham yechilmaydi.
+    # Bir xil inshoni ikki marta yuborgan odam ikki marta to'lamasligi kerak.
+    from_cache = result.get("cached")
+    if not from_cache:
+        db.consume(user.id)
+        db.record_check(user.id, task, result["overall"], result["words"])
+        db.track(user.id, "graded", task)
 
     context.user_data.pop("stage", None)
     # Keyingi tekshiruv boshqa topshiriq bo'ladi — grafikni tashlab yuboramiz,
@@ -297,11 +308,23 @@ async def _run_grading(update, context, essay: str = "",
 
     left = db.balance(user.id)
     await _send_long(
-        update.message,
+        update.effective_message,
         format_result(result, lang, left),
         parse_mode="HTML",
         reply_markup=main_kb(lang),
     )
+
+    if from_cache:
+        # Nega bu xabar kerak: foydalanuvchi bir xil inshoni qayta
+        # yuborganda "nega bir xil?" deb o'ylamasin — va agar ataylab
+        # yangi baho olmoqchi bo'lsa, yo'li bor.
+        await update.effective_message.reply_text(
+            t("from_cache", lang),
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(t("regrade", lang), callback_data="regrade")
+            ]]),
+        )
 
     # Taklif qilgan odamga bonus — faqat haqiqiy tekshiruvdan keyin.
     ref = db.credit_referrer(user.id)
@@ -315,7 +338,7 @@ async def _run_grading(update, context, essay: str = "",
 
     # Kreditlar tugagan bo'lsa — darhol tarifni ko'rsatamiz.
     if not left["unlimited"] and left["credits"] == 0:
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             t("no_credits", lang, bonus=config.REFERRAL_BONUS),
             parse_mode="HTML", reply_markup=buy_kb(lang),
         )
@@ -719,13 +742,18 @@ async def _download(context, file_ids: list[str], limit: int) -> list[bytes]:
     return out
 
 
-async def _grade_photos(update, context, file_ids: list[str]):
+async def _grade_photos(update, context, file_ids: list[str], force: bool = False):
     """Rasm(lar)ni yuklab olib, bitta insho sifatida baholaydi."""
+    q_ids = list(context.user_data.get("question_photos", []))
     images = await _download(context, file_ids, MAX_PAGES)
-    q_images = await _download(
-        context, context.user_data.get("question_photos", []), MAX_TASK_IMAGES
-    )
-    await _run_grading(update, context, images=images, question_images=q_images)
+    q_images = await _download(context, q_ids, MAX_TASK_IMAGES)
+    # Qayta baholash uchun eslab qolamiz: baytlarni emas, file_id larni —
+    # xotirada rasm ushlab turish har foydalanuvchida yuzlab kilobayt bo'ladi.
+    context.user_data["last_files"] = list(file_ids)
+    context.user_data["last_qfiles"] = q_ids
+    context.user_data["last_essay"] = ""
+    await _run_grading(update, context, images=images,
+                       question_images=q_images, force=force)
 
 
 async def _take_question_photos(update, context, file_ids: list[str]):
@@ -813,6 +841,47 @@ async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _grade_photos(update, context, [update.message.photo[-1].file_id])
 
 
+async def on_regrade(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """«Qayta baholash» — keshni chetlab o'tib, yangidan baholaydi.
+
+    Kredit yechiladi, chunki bu haqiqiy yangi ish. Natija oldingisidan
+    biroz farq qilishi mumkin va bu ataylab: foydalanuvchi ikkinchi fikr
+    so'ragan bo'ladi.
+    """
+    q = update.callback_query
+    await q.answer()
+    user = q.from_user
+    lang = _lang(context, user.id)
+
+    if not db.can_check(user.id):
+        await q.message.reply_text(
+            t("no_credits", lang, bonus=config.REFERRAL_BONUS),
+            parse_mode="HTML", reply_markup=buy_kb(lang),
+        )
+        return
+
+    context.user_data["task"] = context.user_data.get("last_task", "task2")
+    context.user_data["question"] = context.user_data.get("last_question", "")
+    files = context.user_data.get("last_files") or []
+    essay = context.user_data.get("last_essay") or ""
+    if not files and not essay:
+        await q.message.reply_text(t("nothing_to_regrade", lang))
+        return
+
+    try:
+        await q.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+    if files:
+        context.user_data["question_photos"] = context.user_data.get(
+            "last_qfiles", []
+        )
+        await _grade_photos(update, context, files, force=True)
+    else:
+        await _run_grading(update, context, essay=essay, force=True)
+
+
 async def on_open_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Inline «Tarif olish» / «Taklif qilish» tugmalari."""
     q = update.callback_query
@@ -848,6 +917,7 @@ def build_app() -> Application:
     app.add_handler(CallbackQueryHandler(on_plan_chosen, pattern=r"^plan:"))
     app.add_handler(CallbackQueryHandler(on_admin_decision, pattern=r"^pay:"))
     app.add_handler(CallbackQueryHandler(on_open_button, pattern=r"^open:"))
+    app.add_handler(CallbackQueryHandler(on_regrade, pattern=r"^regrade$"))
 
     app.add_handler(MessageHandler(filters.PHOTO, on_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))

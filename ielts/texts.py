@@ -347,6 +347,25 @@ T = {
             "Nothing was deducted. Please try again in a minute or two."
         ),
     },
+    "from_cache": {
+        "uz": ("♻️ Bu insho avval tekshirilgan — <b>aynan o'sha natija</b> "
+               "qaytarildi va tekshiruv hisobingizdan yechilmadi.\n\n"
+               "Bir xil insho har doim bir xil ball olishi kerak, aks holda "
+               "baholarga ishonib bo'lmaydi.\n\n"
+               "Ikkinchi fikr olmoqchi bo'lsangiz, quyidagi tugmani bosing "
+               "(bitta tekshiruv yechiladi)."),
+        "en": ("♻️ This essay was checked before — the <b>exact same result</b> "
+               "was returned and no check was deducted.\n\n"
+               "The same essay must always get the same band, otherwise the "
+               "scores cannot be trusted.\n\n"
+               "Want a second opinion? Press the button below (one check will "
+               "be used)."),
+    },
+    "regrade": {"uz": "🔄 Qayta baholash", "en": "🔄 Grade again"},
+    "nothing_to_regrade": {
+        "uz": "Qayta baholash uchun insho topilmadi. Yangisini yuboring.",
+        "en": "No essay found to grade again. Send a new one.",
+    },
     "cancelled": {"uz": "Bekor qilindi.", "en": "Cancelled."},
     "send_text_or_photo": {
         "uz": "Insho matnini yoki qo'lyozma rasmini yuboring.",

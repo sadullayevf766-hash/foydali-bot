@@ -65,6 +65,17 @@ def migrate():
                 at      TEXT
             )
         """)
+        # Natija keshi. Sabab: bir xil insho har safar boshqacha ball olsa
+        # (model 0 haroratda ham biroz tebranadi), foydalanuvchi vositaga
+        # ishonmay qo'yadi. Kesh "bir xil kirish -> bir xil natija" ni
+        # KAFOLATLAYDI va bepul kvotani ham tejaydi.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS ielts_cache (
+                key    TEXT PRIMARY KEY,
+                result TEXT,
+                at     TEXT
+            )
+        """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_ielts_ev ON ielts_events(event)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_ielts_pay ON ielts_payments(status)")
 
@@ -322,6 +333,33 @@ def invited_count(user_id: int) -> int:
             "SELECT COUNT(*) n FROM ielts_users WHERE referred_by = ? AND ref_credited = 1",
             (user_id,),
         ).fetchone()["n"]
+
+
+# ---------- Natija keshi ----------
+
+def cache_get(key: str) -> str | None:
+    try:
+        with _conn() as c:
+            row = c.execute(
+                "SELECT result FROM ielts_cache WHERE key = ?", (key,)
+            ).fetchone()
+        return row["result"] if row else None
+    except Exception:
+        # Kesh yordamchi vosita — u ishlamasa baholash to'xtamasligi kerak.
+        return None
+
+
+def cache_put(key: str, result: str):
+    try:
+        with _conn() as c:
+            c.execute(
+                storage.insert_ignore(
+                    "ielts_cache", "key, result, at", "?, ?, ?", "key"
+                ),
+                (key, result, datetime.now().isoformat()),
+            )
+    except Exception:
+        pass
 
 
 # ---------- Kuzatuv va hisobot ----------
