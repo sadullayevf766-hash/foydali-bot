@@ -1,5 +1,33 @@
 # Ishga tushirish rejasi — 30-sentyabrgacha $30
 
+## ⚠️ Avval raqobat haqida halol gap (2026-09-06 da tekshirilgan)
+
+Bozor bo'sh emas. Eng jiddiy raqib — **CrushIELTS** (crushielts.com):
+o'zbek va rus tilida AI IELTS tekshiruvchi, Payme orqali to'lov,
+narxlari **19 000 / 59 000 / 99 000 so'm**. Ya'ni bizning boshlang'ich
+narxlarimiz bilan deyarli bir xil. Bundan tashqari engliwood.uz
+(o'zbekcha, bepul) va o'nlab bepul inglizcha veb-tekshiruvchilar bor
+(OneIELTS, MockIELTS, LexiBot, Deep IELTS...).
+
+**Xulosa: "AI IELTS tekshiruvchi" deb reklama qilsak — yutqazamiz.**
+Biz noma'lum nusxa bo'lamiz va odam bepulini tanlaydi.
+
+**Bizning yagona haqiqiy ustunligimiz — QO'LYOZMA.**
+
+IELTS'da insho **qo'lda** yoziladi. Talaba mashqni ham qo'lda qiladi.
+Veb-saytga uni qayta terish 10-15 daqiqa vaqt oladi va yangi xatolar
+qo'shadi (terishdagi xato ballni pasaytiradi). Bizda: **suratga oling,
+tamom**. Ikki varaqli insho ham bitta albom qilib yuboriladi va bitta
+insho sifatida o'qiladi.
+
+Shuning uchun har bir postda, har bir xabarda birinchi gap shu bo'lsin:
+
+> **Qo'lda yozgan inshoingizni suratga oling — 30 soniyada band ball.**
+
+"AI bilan tekshiradi" degan gap ikkinchi darajali. Uni hamma aytadi.
+
+---
+
 $30 ≈ **390 000 so'm**. Bu 8 ta "Pro" (49 000) yoki 5 ta "cheksiz" (79 000)
 sotuvi. Ya'ni bizga million odam emas, **8 ta to'lovchi** kerak.
 
@@ -43,18 +71,26 @@ bo'lgan **kichik** kanallar afzal — ular javob beradi, kattalari pul so'raydi.
 
 **Tayyor xabar (nusxa oling):**
 
-> Assalomu alaykum. Men IELTS Writing inshosini tekshiradigan bot yasadim:
-> 4 ta rasmiy mezon bo'yicha band ball, xatolar ro'yxati aynan
-> o'quvchining gapidan iqtibos bilan, va keyingi yarim ballga chiqish uchun
-> 3 ta aniq qadam. Qo'lda yozilgan inshoni rasmdan ham o'qiydi.
+> Assalomu alaykum. Siz o'quvchilaringizning qo'lda yozgan inshosini
+> tekshirishga qancha vaqt ketkazasiz?
 >
-> Sizga va o'quvchilaringizga **cheksiz bepul** ochib beraman — sinab
-> ko'ring, foydali chiqsa kanalingizda bir marta aytib qo'ysangiz bo'ldi.
+> Men shuni tezlashtiradigan bot yasadim: o'quvchi **qo'lyozmasini
+> suratga oladi** (ikki varaq bo'lsa albom qilib), bot 30 soniyada
+> 4 ta rasmiy mezon bo'yicha band ball, xatolar ro'yxatini aynan uning
+> gapidan iqtibos bilan va keyingi yarim ballga chiqish uchun 3 ta aniq
+> qadam beradi.
+>
+> Sizga **cheksiz bepul** ochib beraman — o'zingiz ishlating, sinang.
+> Foydali chiqsa kanalingizda bir marta aytib qo'ysangiz bo'ldi.
 > Foydasiz chiqsa hech narsa aytmang, xafa bo'lmayman.
 >
-> Bot: @BOT_USERNAME
+> Bot: @IELTS_Tekshiruvchi_bot
 >
-> Bitta inshoni tashlang, natijani ko'rasiz — 40 soniyada javob beradi.
+> Bitta insho suratini tashlang — javobini ko'rasiz.
+
+Nega aynan shunday boshlanadi: birinchi gap **uning muammosi** haqida,
+mahsulot haqida emas. "Men bot yasadim" deb boshlangan xabar reklama
+bo'lib o'qiladi va o'chiriladi.
 
 O'qituvchiga cheksiz berish: `/bering <uning_id> 100`
 
