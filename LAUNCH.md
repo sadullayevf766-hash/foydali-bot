@@ -26,6 +26,20 @@ Shuning uchun har bir postda, har bir xabarda birinchi gap shu bo'lsin:
 
 "AI bilan tekshiradi" degan gap ikkinchi darajali. Uni hamma aytadi.
 
+### Ikkinchi ustunlik: Task 1 grafigi
+
+Bepul veb-tekshiruvchilar faqat MATN qabul qiladi. Ya'ni Task 1 Academic'da
+ular grafikni ko'rmaydi va talaba keltirgan raqamlar to'g'ri yoki soxta
+ekanini **umuman bilolmaydi** — holbuki Task Achievement bahosining yarmi
+aynan shu.
+
+Bizda grafik rasmini ham yuborsa bo'ladi va bot raqamlarni solishtiradi.
+Sinovda ataylab kiritilgan ikkala xato ham tutildi: soxta raqam (80 o'rniga
+95) va noto'g'ri trend ("o'sish davom etdi", aslida tushgan).
+
+O'qituvchilar uchun bu eng kuchli dalil — chunki talabalar aynan shu
+xatoni juda ko'p qiladi va uni qo'lda tekshirish charchatadi.
+
 ---
 
 $30 ≈ **390 000 so'm**. Bu 8 ta "Pro" (49 000) yoki 5 ta "cheksiz" (79 000)
