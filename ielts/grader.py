@@ -161,29 +161,55 @@ def round_band(x: float) -> float:
     return float(whole + 1)
 
 
-def _build_prompt(task: str, question: str, essay: str, lang: str, n_images: int) -> str:
+def _build_prompt(task: str, question: str, essay: str, lang: str,
+                  n_images: int, n_task_images: int = 0) -> str:
     spec = TASKS[task]
     keys = CRITERIA["task2" if task == "task2" else "task1"]
     keys_line = ", ".join(f'"{k}" ({name})' for k, name in keys)
+
+    if question.strip():
+        q_block = question.strip()
+    elif n_task_images:
+        q_block = "(See the TASK IMAGE below — the question is in the picture.)"
+    else:
+        q_block = ("(The candidate did not provide the question. Judge the "
+                   "response on its own terms and say in the summary that the "
+                   "task criterion could not be assessed reliably without the "
+                   "prompt.)")
+
     parts = [
         f"TASK TYPE: {spec['brief']}",
         f"REQUIRED LENGTH: at least {spec['min_words']} words.",
         "",
         "THE QUESTION THE CANDIDATE WAS ANSWERING:",
-        question.strip() or "(The candidate did not provide the question. "
-        "Judge the response on its own terms and say in the summary that the "
-        "task criterion could not be assessed reliably without the prompt.)",
+        q_block,
         "",
     ]
+    if n_task_images:
+        parts += [
+            f"IMPORTANT: {n_task_images} image(s) below are labelled TASK "
+            "IMAGE. Those are the QUESTION — a chart, table, map, diagram or "
+            "printed prompt. They are NOT the candidate's answer. Never grade "
+            "them, never transcribe them into `transcript`, and never quote "
+            "them as the candidate's mistakes.",
+            "Because you can see the visual, check the candidate's FACTS "
+            "against it: every figure, trend, comparison and superlative they "
+            "state must actually be true of the data shown. Invented numbers, "
+            "wrong trends, or a missing overview are serious Task Achievement "
+            "failures — say so explicitly and list any wrong figure among the "
+            "errors, quoting the candidate's own words.",
+            "",
+        ]
     if n_images:
         pages = (
-            "The candidate's response is in the attached image (handwriting)."
+            "The candidate's response is the image labelled CANDIDATE RESPONSE "
+            "(handwriting)."
             if n_images == 1 else
-            f"The candidate's response is spread across the {n_images} attached "
-            "images, which are consecutive PAGES of ONE single essay, in order. "
-            "Join them into one continuous text — do not treat them as separate "
-            "essays, and do not count the same sentence twice where a page break "
-            "falls mid-sentence."
+            f"The candidate's response is spread across the {n_images} images "
+            "labelled CANDIDATE RESPONSE, which are consecutive PAGES of ONE "
+            "single essay, in order. Join them into one continuous text — do "
+            "not treat them as separate essays, and do not count the same "
+            "sentence twice where a page break falls mid-sentence."
         )
         parts += [
             pages,
@@ -281,9 +307,14 @@ async def _gemini_once(model: str, body: dict) -> dict:
     return _parse_json(text)
 
 
-async def _call_gemini(prompt: str, system: str, images: list[bytes]) -> dict:
+async def _call_gemini(prompt: str, system: str,
+                       images: list[tuple[str, bytes]]) -> dict:
     user_parts: list[dict] = [{"text": prompt}]
-    for img in images:
+    for label, img in images:
+        # Har rasmdan OLDIN uning nomi yuboriladi. Aks holda model
+        # topshiriq grafigi bilan javob varag'ini farqlay olmaydi va
+        # grafikni insho deb baholab yuboradi.
+        user_parts.append({"text": f"[{label}]"})
         user_parts.append({
             "inline_data": {
                 "mime_type": _mime(img),
@@ -320,12 +351,14 @@ async def _call_gemini(prompt: str, system: str, images: list[bytes]) -> dict:
     raise GraderError(f"Gemini javob bermadi: {last}")
 
 
-async def _call_openrouter(prompt: str, system: str, images: list[bytes]) -> dict:
+async def _call_openrouter(prompt: str, system: str,
+                           images: list[tuple[str, bytes]]) -> dict:
     content: list | str
     if images:
         content = [{"type": "text", "text": prompt}]
-        for img in images:
+        for label, img in images:
             b64 = base64.b64encode(img).decode()
+            content.append({"type": "text", "text": f"[{label}]"})
             content.append({
                 "type": "image_url",
                 "image_url": {"url": f"data:{_mime(img)};base64,{b64}"},
@@ -380,6 +413,7 @@ async def grade(
     essay: str = "",
     images: list[bytes] | None = None,
     lang: str = "uz",
+    question_images: list[bytes] | None = None,
 ) -> dict:
     """Inshoni baholaydi va tayyor natijani qaytaradi.
 
@@ -387,24 +421,36 @@ async def grade(
     250 so'zlik insho ko'pincha ikki varaqqa sig'adi, shuning uchun ular
     BITTA insho sifatida, bitta so'rovda baholanadi.
 
+    `question_images` — TOPSHIRIQ rasmlari (Task 1 Academic grafigi,
+    jadvali yoki xaritasi). Ular javob emas: modelga alohida nom bilan
+    yuboriladi, aks holda grafikni insho deb baholaydi.
+
     Xato bo'lsa `GraderError` ko'taradi — chaqiruvchi shunda kredit
     yechmaydi.
     """
     images = images or []
+    question_images = question_images or []
     system = SYSTEM.format(feedback_language=lang_name(lang))
-    prompt = _build_prompt(task, question, essay, lang, len(images))
+    prompt = _build_prompt(task, question, essay, lang,
+                           len(images), len(question_images))
+
+    labelled: list[tuple[str, bytes]] = []
+    for i, img in enumerate(question_images, 1):
+        labelled.append((f"TASK IMAGE {i} — this is the question, NOT the answer", img))
+    for i, img in enumerate(images, 1):
+        labelled.append((f"CANDIDATE RESPONSE, PAGE {i} of {len(images)}", img))
 
     errors: list[str] = []
     result = None
     if config.GEMINI_API_KEY:
         try:
-            result = await _call_gemini(prompt, system, images)
+            result = await _call_gemini(prompt, system, labelled)
         except Exception as e:
             errors.append(str(e))
             log.warning("Gemini ishlamadi: %s", e)
     if result is None and config.OPENROUTER_API_KEY:
         try:
-            result = await _call_openrouter(prompt, system, images)
+            result = await _call_openrouter(prompt, system, labelled)
         except Exception as e:
             errors.append(str(e))
             log.warning("OpenRouter ishlamadi: %s", e)

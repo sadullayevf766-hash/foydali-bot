@@ -52,6 +52,51 @@ T = {
             "so the heaviest criterion (Task Response) stays unassessed."
         ),
     },
+    "ask_question_visual": {
+        "uz": (
+            "📊 Task 1 Academic'da savol — bu <b>grafik, jadval, xarita yoki "
+            "sxema</b>.\n\n"
+            "Uning <b>rasmini yuboring</b> (matni ham bo'lsa, matn ko'rinishida "
+            "yuborsangiz ham bo'ladi).\n\n"
+            "Bu muhim: grafikni ko'rmasa, bot siz keltirgan raqamlar to'g'ri "
+            "yoki noto'g'ri ekanini bilolmaydi — bu esa Task Achievement "
+            "bahosining yarmi."
+        ),
+        "en": (
+            "📊 In Task 1 Academic the question is a <b>chart, table, map or "
+            "diagram</b>.\n\n"
+            "Send a <b>photo of it</b> (you may send the wording as text too).\n\n"
+            "This matters: without seeing the visual the bot cannot tell "
+            "whether your figures are right or wrong — and that is half of "
+            "Task Achievement."
+        ),
+    },
+    "has_task_image": {
+        "uz": "📊 Savolda grafik/rasm ham bor",
+        "en": "📊 The question has a chart/image",
+    },
+    "send_task_image": {
+        "uz": (
+            "📊 Topshiriq rasmini (grafik, jadval, xarita) yuboring.\n\n"
+            "Keyin inshoingizni yuborasiz."
+        ),
+        "en": (
+            "📊 Send the task image (chart, table, map).\n\n"
+            "You will send your essay after that."
+        ),
+    },
+    "question_photo_ok": {
+        "uz": (
+            "✅ Topshiriq rasmi qabul qilindi ({n} ta).\n\n"
+            "✍️ Endi <b>inshoingizni</b> yuboring — matn yoki qo'lyozma "
+            "rasmi. Bir necha varaq bo'lsa, albom qilib yuboring."
+        ),
+        "en": (
+            "✅ Task image received ({n}).\n\n"
+            "✍️ Now send your <b>essay</b> — text or a photo of your "
+            "handwriting. Several pages: send them as one album."
+        ),
+    },
     "skip_question": {"uz": "Savolsiz davom etish", "en": "Continue without it"},
     "ask_essay": {
         "uz": (
