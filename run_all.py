@@ -35,6 +35,7 @@ async def _start(app, name: str):
         # foydalanuvchi allaqachon ketgan bo'ladi, javob esa chalkashtiradi.
         drop_pending_updates=True,
     )
+    foydali.RUNNING.append(name)
     log.info("%s ishga tushdi ✅", name)
 
 

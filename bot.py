@@ -61,14 +61,23 @@ def _ensure_single_instance():
         sys.exit(0)
 
 
+# Ishga tushgan botlar ro'yxati. `run_all` to'ldiradi va health sahifasi
+# ko'rsatadi — shu tufayli deploy natijasini Render paneliga kirmasdan,
+# oddiy so'rov bilan tekshirsa bo'ladi.
+RUNNING: list[str] = []
+
+
 class _HealthHandler(BaseHTTPRequestHandler):
     """Render kabi bulutli xizmatlar uchun oddiy 'health' javobi (200 OK).
     Bu, shuningdek, xizmat uxlab qolmasligi uchun 'ping' nishoni bo'lib xizmat qiladi."""
     def do_GET(self):
         self.send_response(200)
-        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write("Foydali Bot ishlayapti ✅".encode("utf-8"))
+        body = "Foydali Bot ishlayapti ✅\nbotlar: " + (
+            ", ".join(RUNNING) if RUNNING else "(hali ko'tarilmadi)"
+        )
+        self.wfile.write(body.encode("utf-8"))
 
     def log_message(self, *args):
         pass  # log'larni jim qoldiramiz
