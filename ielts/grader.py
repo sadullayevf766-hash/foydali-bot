@@ -10,6 +10,7 @@ tez-tez noto'g'ri yaxlitlaydi, arifmetikani esa kodga ishonib bo'ladi.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -131,8 +132,11 @@ SCHEMA = {
         },
         "summary": {"type": "STRING"},
     },
+    # `transcript` ham majburiy: aks holda model uni tashlab ketadi va
+    # qo'lyozma yuborgan odam nima o'qilganini ko'ra olmaydi — bu esa
+    # noto'g'ri o'qilgan so'zni aniqlashning yagona yo'li.
     "required": [
-        "word_count", "off_topic", "memorised", "criteria",
+        "transcript", "word_count", "off_topic", "memorised", "criteria",
         "errors", "upgrades", "improved_paragraph", "summary",
     ],
 }
@@ -157,7 +161,7 @@ def round_band(x: float) -> float:
     return float(whole + 1)
 
 
-def _build_prompt(task: str, question: str, essay: str, lang: str, is_image: bool) -> str:
+def _build_prompt(task: str, question: str, essay: str, lang: str, n_images: int) -> str:
     spec = TASKS[task]
     keys = CRITERIA["task2" if task == "task2" else "task1"]
     keys_line = ", ".join(f'"{k}" ({name})' for k, name in keys)
@@ -171,9 +175,18 @@ def _build_prompt(task: str, question: str, essay: str, lang: str, is_image: boo
         "task criterion could not be assessed reliably without the prompt.)",
         "",
     ]
-    if is_image:
+    if n_images:
+        pages = (
+            "The candidate's response is in the attached image (handwriting)."
+            if n_images == 1 else
+            f"The candidate's response is spread across the {n_images} attached "
+            "images, which are consecutive PAGES of ONE single essay, in order. "
+            "Join them into one continuous text — do not treat them as separate "
+            "essays, and do not count the same sentence twice where a page break "
+            "falls mid-sentence."
+        )
         parts += [
-            "The candidate's response is in the attached image (handwriting).",
+            pages,
             "First transcribe it EXACTLY as written, preserving their spelling "
             "and grammar mistakes — do not silently correct anything. Put that "
             "transcription in the `transcript` field. Then grade the "
@@ -187,7 +200,7 @@ def _build_prompt(task: str, question: str, essay: str, lang: str, is_image: boo
             "---",
             essay.strip(),
             "---",
-            "Leave `transcript` empty.",
+            "Set `transcript` to an empty string.",
         ]
     parts += [
         "",
@@ -222,13 +235,59 @@ def _mime(image: bytes) -> str:
     return "image/jpeg"
 
 
-async def _call_gemini(prompt: str, system: str, image: bytes | None) -> dict:
+# Vaqtinchalik nosozliklar: bularda qayta urinish MA'NOLI.
+# 429 — kvota/tezlik chegarasi, 5xx — model band yoki serverda nosozlik.
+RETRY_CODES = {429, 500, 502, 503, 504}
+# Har urinish orasidagi kutish (soniya). Oxirgi urinishdan keyin kutilmaydi.
+BACKOFF = [3, 8]
+
+
+def _model_chain() -> list[str]:
+    """Sinab ko'riladigan modellar: asosiysi, keyin zaxirasi.
+
+    Bepul tarifda `gemini-2.5-flash` vaqti-vaqti bilan 503 beradi
+    (2026-09-06 da amalda uchradi). Eskiroq va kamroq yuklangan model
+    sifat jihatidan biroz pastroq, lekin foydalanuvchi uchun "xato"
+    dan ancha yaxshi.
+    """
+    chain = [config.GEMINI_MODEL]
+    for fallback in ("gemini-2.0-flash",):
+        if fallback not in chain:
+            chain.append(fallback)
+    return chain
+
+
+class _Transient(Exception):
+    """Vaqtinchalik nosozlik — qayta urinsa o'tishi mumkin."""
+
+
+async def _gemini_once(model: str, body: dict) -> dict:
+    url = GEMINI_URL.format(model=model)
+    async with httpx.AsyncClient(timeout=180) as client:
+        r = await client.post(
+            url, json=body, headers={"x-goog-api-key": config.GEMINI_API_KEY}
+        )
+    if r.status_code in RETRY_CODES:
+        raise _Transient(f"Gemini {r.status_code} ({model})")
+    if r.status_code != 200:
+        # 400/403 kabi xatolar qayta urinishdan tuzalmaydi — darhol to'xtaymiz.
+        raise GraderError(f"Gemini {r.status_code}: {r.text[:300]}")
+    data = r.json()
+    try:
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+    except (KeyError, IndexError):
+        # Xavfsizlik filtri yoki bo'sh javob.
+        raise GraderError(f"Gemini bo'sh javob qaytardi: {str(data)[:300]}")
+    return _parse_json(text)
+
+
+async def _call_gemini(prompt: str, system: str, images: list[bytes]) -> dict:
     user_parts: list[dict] = [{"text": prompt}]
-    if image:
+    for img in images:
         user_parts.append({
             "inline_data": {
-                "mime_type": _mime(image),
-                "data": base64.b64encode(image).decode(),
+                "mime_type": _mime(img),
+                "data": base64.b64encode(img).decode(),
             }
         })
     body = {
@@ -240,31 +299,37 @@ async def _call_gemini(prompt: str, system: str, image: bytes | None) -> dict:
             "responseSchema": SCHEMA,
         },
     }
-    url = GEMINI_URL.format(model=config.GEMINI_MODEL)
-    async with httpx.AsyncClient(timeout=180) as client:
-        r = await client.post(
-            url, json=body, headers={"x-goog-api-key": config.GEMINI_API_KEY}
-        )
-    if r.status_code != 200:
-        raise GraderError(f"Gemini {r.status_code}: {r.text[:300]}")
-    data = r.json()
-    try:
-        text = data["candidates"][0]["content"]["parts"][0]["text"]
-    except (KeyError, IndexError):
-        # Xavfsizlik filtri yoki bo'sh javob.
-        raise GraderError(f"Gemini bo'sh javob qaytardi: {str(data)[:300]}")
-    return _parse_json(text)
+
+    last = None
+    for model in _model_chain():
+        for attempt in range(len(BACKOFF) + 1):
+            try:
+                return await _gemini_once(model, body)
+            except _Transient as e:
+                last = e
+                log.warning("%s — qayta urinish %s", e, attempt + 1)
+                if attempt < len(BACKOFF):
+                    await asyncio.sleep(BACKOFF[attempt])
+            except httpx.RequestError as e:
+                # Tarmoq uzildi — bu ham vaqtinchalik.
+                last = e
+                log.warning("Tarmoq xatosi: %s", e)
+                if attempt < len(BACKOFF):
+                    await asyncio.sleep(BACKOFF[attempt])
+        log.warning("%s modeli javob bermadi, zaxiraga o'tamiz", model)
+    raise GraderError(f"Gemini javob bermadi: {last}")
 
 
-async def _call_openrouter(prompt: str, system: str, image: bytes | None) -> dict:
+async def _call_openrouter(prompt: str, system: str, images: list[bytes]) -> dict:
     content: list | str
-    if image:
-        b64 = base64.b64encode(image).decode()
-        content = [
-            {"type": "text", "text": prompt},
-            {"type": "image_url",
-             "image_url": {"url": f"data:{_mime(image)};base64,{b64}"}},
-        ]
+    if images:
+        content = [{"type": "text", "text": prompt}]
+        for img in images:
+            b64 = base64.b64encode(img).decode()
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:{_mime(img)};base64,{b64}"},
+            })
     else:
         content = prompt
     body = {
@@ -313,35 +378,40 @@ async def grade(
     task: str,
     question: str,
     essay: str = "",
-    image: bytes | None = None,
+    images: list[bytes] | None = None,
     lang: str = "uz",
 ) -> dict:
     """Inshoni baholaydi va tayyor natijani qaytaradi.
 
+    `images` — bitta inshoning varaqlari (ketma-ketlikda). Qo'lda yozilgan
+    250 so'zlik insho ko'pincha ikki varaqqa sig'adi, shuning uchun ular
+    BITTA insho sifatida, bitta so'rovda baholanadi.
+
     Xato bo'lsa `GraderError` ko'taradi — chaqiruvchi shunda kredit
     yechmaydi.
     """
+    images = images or []
     system = SYSTEM.format(feedback_language=lang_name(lang))
-    prompt = _build_prompt(task, question, essay, lang, image is not None)
+    prompt = _build_prompt(task, question, essay, lang, len(images))
 
     errors: list[str] = []
     result = None
     if config.GEMINI_API_KEY:
         try:
-            result = await _call_gemini(prompt, system, image)
+            result = await _call_gemini(prompt, system, images)
         except Exception as e:
             errors.append(str(e))
             log.warning("Gemini ishlamadi: %s", e)
     if result is None and config.OPENROUTER_API_KEY:
         try:
-            result = await _call_openrouter(prompt, system, image)
+            result = await _call_openrouter(prompt, system, images)
         except Exception as e:
             errors.append(str(e))
             log.warning("OpenRouter ishlamadi: %s", e)
     if result is None:
         raise GraderError(" | ".join(errors) or "Model sozlanmagan")
 
-    return _normalise(result, task, essay, image is not None)
+    return _normalise(result, task, essay, bool(images))
 
 
 def _normalise(raw: dict, task: str, essay: str, from_image: bool) -> dict:

@@ -57,7 +57,7 @@ async def main():
         print(f"❌ Yetishmayapti: {', '.join(gaps)} — .env ga yozing")
         return 1
 
-    image = None
+    images = []
     essay = SAMPLE_ESSAY
     question = SAMPLE_QUESTION
 
@@ -67,9 +67,9 @@ async def main():
             print(f"❌ Fayl topilmadi: {path}")
             return 1
         if path.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
-            image = open(path, "rb").read()
+            images = [open(path, "rb").read()]
             essay, question = "", ""
-            print(f"📸 Rasm: {path} ({len(image) // 1024} KB)")
+            print(f"📸 Rasm: {path} ({len(images[0]) // 1024} KB)")
         else:
             essay = open(path, encoding="utf-8").read()
             question = ""
@@ -83,7 +83,7 @@ async def main():
     import time
     t0 = time.time()
     try:
-        r = await grader.grade("task2", question, essay, image, "uz")
+        r = await grader.grade("task2", question, essay, images, "uz")
     except Exception as e:
         print(f"❌ Xato: {e}")
         return 1

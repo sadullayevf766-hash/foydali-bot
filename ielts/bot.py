@@ -6,6 +6,7 @@ murakkablik bo'lardi.
 """
 from __future__ import annotations
 
+import asyncio
 import html
 import logging
 from datetime import datetime
@@ -33,6 +34,16 @@ from .texts import btn, res, t
 log = logging.getLogger("ielts.bot")
 
 TELEGRAM_LIMIT = 4096
+
+# Qo'lda yozilgan 250 so'zlik insho ko'pincha ikki varaqqa sig'adi va
+# foydalanuvchi ularni albom qilib yuboradi. Telegram albomdagi har bir
+# rasmni ALOHIDA yangilanish sifatida yuboradi — ular faqat
+# `media_group_id` bilan bog'langan. Shuning uchun rasmlarni shu yerda
+# yig'ib turamiz va oxirgisidan keyin biroz kutib, hammasini BITTA insho
+# sifatida baholaymiz (bitta kredit).
+_albums: dict[str, dict] = {}
+ALBUM_WAIT = 2.5   # soniya, oxirgi rasmdan keyin
+MAX_PAGES = 5
 
 
 # ---------- Klaviaturalar ----------
@@ -212,12 +223,14 @@ async def on_skip_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.edit_message_text(t("ask_essay", lang), parse_mode="HTML")
 
 
-async def _run_grading(update, context, essay: str = "", image: bytes | None = None):
+async def _run_grading(update, context, essay: str = "",
+                       images: list[bytes] | None = None):
     """Baholaydi, natijani yuboradi va kreditni FAQAT muvaffaqiyatda yechadi."""
     user = update.effective_user
     lang = _lang(context, user.id)
     task = context.user_data.get("task", "task2")
     question = context.user_data.get("question", "")
+    images = images or []
 
     if context.user_data.get("busy"):
         return
@@ -229,12 +242,16 @@ async def _run_grading(update, context, essay: str = "", image: bytes | None = N
         return
 
     context.user_data["busy"] = True
-    wait = await update.message.reply_text(
-        t("reading_photo" if image else "working", lang)
-    )
+    if len(images) > 1:
+        note = t("reading_pages", lang, n=len(images))
+    elif images:
+        note = t("reading_photo", lang)
+    else:
+        note = t("working", lang)
+    wait = await update.message.reply_text(note)
     try:
         await context.bot.send_chat_action(update.effective_chat.id, ChatAction.TYPING)
-        result = await grader.grade(task, question, essay, image, lang)
+        result = await grader.grade(task, question, essay, images, lang)
     except Exception as e:
         log.warning("Baholash muvaffaqiyatsiz (user %s): %s", user.id, e)
         db.track(user.id, "grade_failed")
@@ -650,6 +667,34 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await begin_check(update, context)
 
 
+async def _grade_photos(update, context, file_ids: list[str]):
+    """Rasm(lar)ni yuklab olib, bitta insho sifatida baholaydi."""
+    images = []
+    for fid in file_ids[:MAX_PAGES]:
+        f = await context.bot.get_file(fid)
+        images.append(bytes(await f.download_as_bytearray()))
+    await _run_grading(update, context, images=images)
+
+
+async def _album_ready(mg: str, update, context):
+    """Albomdagi oxirgi rasmdan keyin kutib, hammasini birga baholaydi.
+
+    Har yangi rasm bu vazifani bekor qilib, yangisini boshlaydi — shuning
+    uchun baholash faqat albom to'liq kelgandan keyin bir marta ishlaydi.
+    """
+    try:
+        await asyncio.sleep(ALBUM_WAIT)
+    except asyncio.CancelledError:
+        return
+    bucket = _albums.pop(mg, None)
+    if not bucket or not bucket["ids"]:
+        return
+    try:
+        await _grade_photos(update, context, bucket["ids"])
+    except Exception:
+        log.exception("Albomni baholashda xatolik")
+
+
 async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     lang = _lang(context, user.id)
@@ -669,9 +714,18 @@ async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data.setdefault("task", "task2")
     context.user_data.setdefault("question", "")
-    photo = await update.message.photo[-1].get_file()
-    data = bytes(await photo.download_as_bytearray())
-    await _run_grading(update, context, image=data)
+
+    mg = update.message.media_group_id
+    if mg:
+        bucket = _albums.setdefault(mg, {"ids": [], "timer": None})
+        if len(bucket["ids"]) < MAX_PAGES:
+            bucket["ids"].append(update.message.photo[-1].file_id)
+        if bucket["timer"]:
+            bucket["timer"].cancel()
+        bucket["timer"] = asyncio.create_task(_album_ready(mg, update, context))
+        return
+
+    await _grade_photos(update, context, [update.message.photo[-1].file_id])
 
 
 async def on_open_button(update: Update, context: ContextTypes.DEFAULT_TYPE):

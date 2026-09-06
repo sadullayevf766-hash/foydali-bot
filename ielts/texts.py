@@ -22,7 +22,7 @@ T = {
             "ball, xatolaringiz ro'yxati va keyingi yarim ballga chiqish uchun "
             "aniq 3 ta qadam olasiz.\n\n"
             "📸 Qo'lda yozgan bo'lsangiz — shunchaki <b>rasmini</b> yuboring, "
-            "o'qib beradi.\n\n"
+            "o'qib beradi. Bir necha varaq bo'lsa, albom qilib yuboring.\n\n"
             "🎁 Sizda <b>{credits} ta bepul tekshiruv</b> bor.\n\n"
             "Boshlash uchun «{btn}» tugmasini bosing."
         ),
@@ -57,12 +57,17 @@ T = {
         "uz": (
             "✍️ Endi <b>inshoingizni</b> yuboring.\n\n"
             "Matn ko'rinishida yozing yoki qo'lyozmangizning <b>rasmini</b> "
-            "yuboring (bitta aniq, yorug' surat)."
+            "yuboring.\n\n"
+            "📄 Insho bir necha varaqda bo'lsa — hammasini <b>bitta albom "
+            "qilib</b> (birdan tanlab) yuboring. Ular bitta insho sifatida "
+            "o'qiladi va bitta tekshiruv hisoblanadi."
         ),
         "en": (
             "✍️ Now send your <b>essay</b>.\n\n"
-            "Type it, or send a <b>photo</b> of your handwriting "
-            "(one clear, well-lit shot)."
+            "Type it, or send a <b>photo</b> of your handwriting.\n\n"
+            "📄 If it spans several pages, send them as <b>one album</b> "
+            "(select them all at once). They are read as a single essay and "
+            "count as one check."
         ),
     },
     "working": {
@@ -72,6 +77,12 @@ T = {
     "reading_photo": {
         "uz": "📖 Qo'lyozma o'qilmoqda va tekshirilmoqda… 30-60 soniya.",
         "en": "📖 Reading the handwriting and grading… 30-60 seconds.",
+    },
+    "reading_pages": {
+        "uz": ("📖 {n} ta varaq bitta insho sifatida o'qilmoqda… "
+               "30-60 soniya. Bitta tekshiruv hisoblanadi."),
+        "en": ("📖 Reading {n} pages as one essay… 30-60 seconds. "
+               "This counts as a single check."),
     },
     "too_short": {
         "uz": (
