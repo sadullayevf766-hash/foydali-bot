@@ -115,6 +115,19 @@ async def _send_long(message, text: str, **kw):
         await message.reply_text(chunk, **kw)
 
 
+def _fmt_card() -> str:
+    """Karta raqamini 4 talab bo'lib ko'rsatadi.
+
+    Bazada raqamlar birga saqlanadi (nusxa olib bank ilovasiga qo'yish
+    ishonchli bo'lsin), ekranda esa bo'shliq bilan — qo'lda kirituvchi
+    odam adashmasligi uchun.
+    """
+    d = "".join(ch for ch in config.CARD_NUMBER if ch.isdigit())
+    if len(d) != 16:
+        return config.CARD_NUMBER
+    return " ".join(d[i:i + 4] for i in range(0, 16, 4))
+
+
 def _plan_label(key: str, lang: str) -> str:
     p = config.PLANS[key]
     return p["title"] if lang == "uz" else p["title_en"]
@@ -419,7 +432,7 @@ async def on_plan_chosen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.edit_message_text(
         t("pay_instructions", lang, pid=pid, plan=_plan_label(key, lang),
           amount=f"{plan['price']:,}".replace(",", " "),
-          card=config.CARD_NUMBER, holder=holder),
+          card=_fmt_card(), holder=holder),
         parse_mode="HTML",
     )
 

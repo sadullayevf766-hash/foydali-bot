@@ -208,12 +208,26 @@ def lang_name(lang: str) -> str:
     return "Uzbek (o'zbek tilida)" if lang == "uz" else "English"
 
 
+def _mime(image: bytes) -> str:
+    """Rasm turini boshidagi baytlardan aniqlaydi.
+
+    Telegram suratlarni JPEG ga aylantiradi, lekin sinovda va kelajakda
+    boshqa format kelishi mumkin — noto'g'ri mime bilan model rasmni
+    umuman ko'rmaydi.
+    """
+    if image.startswith(b"\x89PNG"):
+        return "image/png"
+    if image[:4] == b"RIFF" and image[8:12] == b"WEBP":
+        return "image/webp"
+    return "image/jpeg"
+
+
 async def _call_gemini(prompt: str, system: str, image: bytes | None) -> dict:
     user_parts: list[dict] = [{"text": prompt}]
     if image:
         user_parts.append({
             "inline_data": {
-                "mime_type": "image/jpeg",
+                "mime_type": _mime(image),
                 "data": base64.b64encode(image).decode(),
             }
         })
@@ -249,7 +263,7 @@ async def _call_openrouter(prompt: str, system: str, image: bytes | None) -> dic
         content = [
             {"type": "text", "text": prompt},
             {"type": "image_url",
-             "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+             "image_url": {"url": f"data:{_mime(image)};base64,{b64}"}},
         ]
     else:
         content = prompt

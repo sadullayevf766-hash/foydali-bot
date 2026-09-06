@@ -52,24 +52,30 @@ async def _stop(app, name: str):
 
 async def amain():
     started: list[tuple] = []
+    # RUN_ONLY=ielts — lokalda faqat IELTS botni sinash uchun. Foydali Bot
+    # Render'da ishlab turgani uchun uni ikkinchi marta ko'tarish 409
+    # Conflict beradi va xabarlar yo'qoladi.
+    only = os.getenv("RUN_ONLY", "").strip().lower()
 
-    try:
-        app = foydali.build_app()
-        await _start(app, "Foydali Bot")
-        started.append((app, "Foydali Bot"))
-    except Exception:
-        log.exception("Foydali Bot ishga tushmadi")
-
-    gaps = ielts_config.missing()
-    if gaps:
-        log.warning("IELTS bot o'chiq — yetishmayapti: %s", ", ".join(gaps))
-    else:
+    if only in ("", "foydali", "all"):
         try:
-            app = ielts_bot.build_app()
-            await _start(app, "IELTS Bot")
-            started.append((app, "IELTS Bot"))
+            app = foydali.build_app()
+            await _start(app, "Foydali Bot")
+            started.append((app, "Foydali Bot"))
         except Exception:
-            log.exception("IELTS bot ishga tushmadi")
+            log.exception("Foydali Bot ishga tushmadi")
+
+    if only in ("", "ielts", "all"):
+        gaps = ielts_config.missing()
+        if gaps:
+            log.warning("IELTS bot o'chiq — yetishmayapti: %s", ", ".join(gaps))
+        else:
+            try:
+                app = ielts_bot.build_app()
+                await _start(app, "IELTS Bot")
+                started.append((app, "IELTS Bot"))
+            except Exception:
+                log.exception("IELTS bot ishga tushmadi")
 
     if not started:
         raise SystemExit("Hech qaysi bot ishga tushmadi — loglarni tekshiring")

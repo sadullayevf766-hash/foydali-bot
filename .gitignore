@@ -9,3 +9,7 @@ logo.png
 *.log
 bot.log*
 *.bak
+
+# Render paneliga qo'l bilan kiritiladigan maxfiy qiymatlar
+render-env.txt
+_disabled_*.vbs
