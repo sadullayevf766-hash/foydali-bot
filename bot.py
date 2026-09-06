@@ -801,14 +801,17 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
             pass
 
 
-def main():
+def build_app() -> Application:
+    """Applicationni yig'adi (ishga tushirmaydi).
+
+    Alohida turishi kerak: `run_all.py` ikkala botni bitta jarayonda
+    ishga tushiradi va o'zining hayot siklini boshqaradi.
+    """
     if not config.BOT_TOKEN:
         raise SystemExit(
             "BOT_TOKEN topilmadi! .env faylga tokeningizni yozing "
             "(.env.example dan nusxa oling)."
         )
-    _ensure_single_instance()
-    _start_health_server()  # Render/bulut uchun (PORT env bo'lsa)
     db.init_db()
     growth_db.migrate()
     app = Application.builder().token(config.BOT_TOKEN).build()
@@ -825,11 +828,24 @@ def main():
     app.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, on_paid))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
     app.add_error_handler(error_handler)
+    return app
 
+
+def main():
+    _ensure_single_instance()
+    _start_health_server()  # Render/bulut uchun (PORT env bo'lsa)
+    app = build_app()
     log.info("Baza: %s", storage.label())
     log.info("Bot ishga tushdi ✅")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
-    main()
+    # Render'dagi start buyrug'i `python bot.py` — shuning uchun kirish
+    # nuqtasi shu yerda qoladi, lekin ish `run_all` ga topshiriladi: u
+    # Foydali Bot bilan birga IELTS botni ham bir jarayonda ko'taradi.
+    # IELTS tokeni sozlanmagan bo'lsa, u jim o'tkazib yuboriladi.
+    # Faqat Foydali Botni ishlatish uchun: python -c "import bot; bot.main()"
+    import run_all
+
+    run_all.main()

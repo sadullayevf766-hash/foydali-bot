@@ -9,7 +9,7 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: python bot.py
+    startCommand: python run_all.py
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.7"
@@ -17,4 +17,18 @@ services:
       - key: BOT_TOKEN
         sync: false
       - key: ADMIN_ID
+        sync: false
+      - key: IELTS_BOT_TOKEN
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: CARD_NUMBER
+        sync: false
+      - key: CARD_HOLDER
+        sync: false
+      - key: ADMIN_CONTACT
+        sync: false
+      - key: IELTS_BOT_USERNAME
+        sync: false
+      - key: DATABASE_URL
         sync: false

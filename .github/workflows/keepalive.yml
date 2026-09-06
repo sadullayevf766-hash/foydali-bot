@@ -1,0 +1,26 @@
+# Render bepul web service 15 daqiqa harakatsizlikdan keyin uxlaydi.
+# Uxlagan bot Telegram'dan yangilanish olmaydi — ya'ni bot o'lik bo'ladi.
+# Bu ish har 10 daqiqada xizmatni "turtib" uyg'oq saqlaydi.
+# Bepul: ommaviy repoda GitHub Actions daqiqalari cheklanmagan.
+name: keepalive
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Xizmatni uyg'otish
+        run: |
+          for i in 1 2 3; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 120 \
+              "${{ vars.KEEPALIVE_URL || 'https://foydali-bot-6dza.onrender.com/' }}")
+            echo "urinish $i -> HTTP $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 20
+          done
+          echo "Xizmat javob bermadi"
+          exit 1
