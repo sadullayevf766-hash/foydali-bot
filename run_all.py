@@ -25,6 +25,38 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger("run_all")
 
+# Render 15 daqiqada uxlaydi — 10 daqiqa xavfsiz chegara qoldiradi.
+PING_MINUTES = 10
+
+
+async def _self_ping():
+    """Render bepul xizmati 15 daqiqa harakatsizlikdan keyin uxlaydi.
+
+    Uxlagan bot Telegram'dan yangilanish olmaydi — ya'ni o'lik bo'ladi.
+    GitHub Actions cron bunga yaramadi: `*/10` deb yozilgan bo'lsa ham
+    bepul runnerlarda amalda ~2 soatda bir marta ishga tushdi (o'lchandi,
+    2026-09-06). Shuning uchun xizmat o'zini o'zi turtadi: so'rov tashqi
+    URL orqali ketib qaytadi, ya'ni Render uchun bu haqiqiy kiruvchi
+    trafik.
+
+    `RENDER_EXTERNAL_URL` ni Render o'zi beradi — sozlash shart emas.
+    Lokalda bu o'zgaruvchi yo'q, shuning uchun ping umuman ishlamaydi.
+    """
+    url = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("KEEPALIVE_URL")
+    if not url:
+        return
+    import httpx
+
+    log.info("O'z-o'zini ping: %s (har %s daqiqada)", url, PING_MINUTES)
+    while True:
+        await asyncio.sleep(PING_MINUTES * 60)
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                await client.get(url)
+        except Exception as e:
+            # Ping muvaffaqiyatsiz bo'lsa bot ishlashda davom etadi.
+            log.debug("Ping o'tmadi: %s", e)
+
 
 async def _start(app, name: str):
     await app.initialize()
@@ -81,11 +113,13 @@ async def amain():
         raise SystemExit("Hech qaysi bot ishga tushmadi — loglarni tekshiring")
 
     log.info("Baza: %s", storage.label())
+    ping = asyncio.create_task(_self_ping())
     try:
         await asyncio.Event().wait()  # cheksiz kutish
     except (KeyboardInterrupt, asyncio.CancelledError):
         pass
     finally:
+        ping.cancel()
         for app, name in started:
             await _stop(app, name)
 

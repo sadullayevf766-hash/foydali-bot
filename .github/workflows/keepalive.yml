@@ -1,12 +1,18 @@
-# Render bepul web service 15 daqiqa harakatsizlikdan keyin uxlaydi.
-# Uxlagan bot Telegram'dan yangilanish olmaydi — ya'ni bot o'lik bo'ladi.
-# Bu ish har 10 daqiqada xizmatni "turtib" uyg'oq saqlaydi.
-# Bepul: ommaviy repoda GitHub Actions daqiqalari cheklanmagan.
+# ZAXIRA uyg'otgich.
+#
+# Asosiy mexanizm — xizmatning O'ZINI o'zi ping qilishi (run_all._self_ping).
+# Bu ish faqat xizmat baribir uxlab qolgan holat uchun: masalan deploy
+# oralig'ida yoki jarayon qulagan bo'lsa.
+#
+# Nega asosiy emas: `*/10` yozilgan bo'lsa ham GitHub bepul runnerlarda
+# rejalashtirilgan ishlarni kuchli sekinlashtiradi — 2026-09-06 da
+# o'lchandi, amalda ~2 soatda bir marta ishga tushdi. Render esa 15
+# daqiqada uxlaydi, ya'ni buning o'zi yetarli emas.
 name: keepalive
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 jobs:
