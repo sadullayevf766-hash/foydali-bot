@@ -13,3 +13,4 @@ bot.log*
 # Render paneliga qo'l bilan kiritiladigan maxfiy qiymatlar
 render-env.txt
 _disabled_*.vbs
+pg_url.txt
