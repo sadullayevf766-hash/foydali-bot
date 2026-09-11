@@ -35,7 +35,11 @@ def cleanup():
     from storage import conn
     with conn() as c:
         for t in ("ielts_events", "ielts_checks", "ielts_payments", "ielts_users"):
-            c.execute(f"DELETE FROM {t} WHERE user_id IN (?, ?)", (UID, REF))
+            # UID+1 — referal sinovidagi "yangi" foydalanuvchi. Avval u
+            # tozalanmay, jonli bazada qolib ketardi va /stats dagi
+            # foydalanuvchilar sonini soxta oshirardi.
+            c.execute(f"DELETE FROM {t} WHERE user_id IN (?, ?, ?)",
+                      (UID, REF, UID + 1))
 
 
 print("1) Baza yaratilishi")
