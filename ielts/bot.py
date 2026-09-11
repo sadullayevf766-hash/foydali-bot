@@ -614,11 +614,13 @@ def _fmt_sources(s: dict) -> str:
     rows = s.get("sources") or []
     if not rows:
         return ""
-    lines = [
-        f"  {html.escape(str(r['s']))}: {r['n']} odam, "
-        f"{int(r['rev'] or 0):,} so'm".replace(",", " ")
-        for r in rows
-    ]
+    lines = []
+    for r in rows:
+        # Mingliklarni bo'shliq bilan ajratamiz. .replace faqat raqamga
+        # qo'llanadi — butun satrga qo'llanganda "odam," dagi vergul ham
+        # yo'qolib ketgan edi.
+        rev = f"{int(r['rev'] or 0):,}".replace(",", " ")
+        lines.append(f"  {html.escape(str(r['s']))}: {r['n']} odam, {rev} so'm")
     return "\n\n<b>Manbalar</b> (odam / tushum)\n" + "\n".join(lines)
 
 
