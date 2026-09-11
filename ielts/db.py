@@ -395,6 +395,18 @@ def stats() -> dict:
             "SELECT COUNT(DISTINCT user_id) n FROM ielts_payments "
             "WHERE status = 'tasdiqlandi'"
         ).fetchone()["n"]
+        # Manba kesimi: qaysi havola (o'qituvchi) odam va pul olib keldi.
+        # COUNT(DISTINCT ...) shart — LEFT JOIN bitta odamni to'lovlari
+        # soniga ko'paytirib yuboradi.
+        sources = c.execute(
+            "SELECT COALESCE(NULLIF(u.source, ''), '-') s, "
+            "COUNT(DISTINCT u.user_id) n, "
+            "COALESCE(SUM(CASE WHEN p.status = 'tasdiqlandi' "
+            "THEN p.amount ELSE 0 END), 0) rev "
+            "FROM ielts_users u "
+            "LEFT JOIN ielts_payments p ON p.user_id = u.user_id "
+            "GROUP BY 1 ORDER BY n DESC LIMIT 10"
+        ).fetchall()
     return {
         "users": users,
         "checks": checks,
@@ -403,4 +415,5 @@ def stats() -> dict:
         "revenue": paid["s"],
         "buyers": buyers,
         "pending": pending,
+        "sources": [dict(r) for r in sources],
     }

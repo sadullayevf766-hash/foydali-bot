@@ -7,14 +7,25 @@ import os
 import sys
 import tempfile
 
-# Bazani vaqtinchalik faylga yo'naltiramiz — haqiqiy bot.db ga tegmaymiz.
-if not os.getenv("DATABASE_URL"):
+# Sinovlar JONLI bazaga tasodifan tegmasin. Tuzoq: .env da DATABASE_URL
+# bor, va `ielts.config` uni import paytida yuklab olardi — yuqoridagi
+# tekshiruvdan KEYIN. Natijada sinovlar production Neon'ga yozgan va
+# "yangi" degan soxta foydalanuvchi qolib ketgan (2026-09-11).
+# Yechim: DATABASE_URL ni oldindan o'zimiz qo'yamiz — python-dotenv
+# mavjud o'zgaruvchini (bo'sh bo'lsa ham) ustidan yozmaydi.
+# Postgres'da sinash faqat ATAYLAB: TEST_DATABASE_URL=... python test_ielts.py
+_pg = os.getenv("TEST_DATABASE_URL", "").strip()
+os.environ["DATABASE_URL"] = _pg
+if not _pg:
     os.environ["DB_PATH"] = os.path.join(tempfile.gettempdir(), "ielts_test.db")
     if os.path.exists(os.environ["DB_PATH"]):
         os.remove(os.environ["DB_PATH"])
 
 from ielts import config, db, grader  # noqa: E402
 from ielts.bot import format_result  # noqa: E402
+import storage  # noqa: E402
+
+print("Sinov bazasi:", storage.label())
 
 UID = 999_000_111
 REF = 999_000_222

@@ -604,6 +604,24 @@ async def on_admin_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- Admin ----------
 
+def _fmt_sources(s: dict) -> str:
+    """Manba bo'yicha kesim: qaysi o'qituvchi havolasi odam va pul olib keldi.
+
+    Tarqatishdagi eng muhim savol shu — aks holda qaysi hamkorlik
+    ishlaganini bilib bo'lmaydi. Manba nomi foydalanuvchi bosgan
+    havoladan keladi, shuning uchun HTML ga qochiriladi.
+    """
+    rows = s.get("sources") or []
+    if not rows:
+        return ""
+    lines = [
+        f"  {html.escape(str(r['s']))}: {r['n']} odam, "
+        f"{int(r['rev'] or 0):,} so'm".replace(",", " ")
+        for r in rows
+    ]
+    return "\n\n<b>Manbalar</b> (odam / tushum)\n" + "\n".join(lines)
+
+
 async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != config.ADMIN_ID:
         return
@@ -619,7 +637,7 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Sotuvlar: <b>{s['sales']}</b> ({s['buyers']} xaridor)\n"
         f"Tushum: <b>{revenue} so'm</b>\n"
         f"Maqsadgacha ($30): {left:,} so'm\n".replace(",", " ") +
-        f"Kutayotgan to'lovlar: {s['pending']}",
+        f"Kutayotgan to'lovlar: {s['pending']}" + _fmt_sources(s),
         parse_mode="HTML",
     )
 

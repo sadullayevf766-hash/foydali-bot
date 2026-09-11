@@ -1,6 +1,6 @@
 """Referal va voronka mantiqini nusxa bazada sinaydi. Haqiqiy bot.db ga tegmaydi.
 
-DATABASE_URL o'rnatilgan bo'lsa Postgres'da, aks holda vaqtinchalik
+TEST_DATABASE_URL berilsa Postgres'da, aks holda vaqtinchalik
 SQLite faylida ishlaydi.
 """
 import os
@@ -10,6 +10,12 @@ import tempfile
 tmp = tempfile.mkdtemp()
 # config DB_PATH ni env dan o'qiydi — import qilishdan OLDIN o'rnatamiz.
 os.environ["DB_PATH"] = os.path.join(tmp, "test.db")
+# Jonli bazaga TASODIFAN tegmaslik uchun. Tuzoq: `import storage` ichida
+# `config` .env ni yuklaydi va undagi DATABASE_URL (production Neon)
+# sinovni jonli bazaga yo'naltirardi. python-dotenv mavjud o'zgaruvchini
+# (bo'sh bo'lsa ham) ustidan yozmaydi, shuning uchun oldindan qo'yamiz.
+# Postgres'da sinash faqat ATAYLAB: TEST_DATABASE_URL=... python test_growth.py
+os.environ["DATABASE_URL"] = os.getenv("TEST_DATABASE_URL", "").strip()
 
 import storage
 import db
